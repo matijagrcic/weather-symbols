@@ -1,4 +1,4 @@
-var svg = require('../svg')
+var svg = require('../utils/svg')
 	, style = require('style')
 	, Trait = require('trait')
 	, TPrimitive = require('./TPrimitive')
@@ -17,16 +17,10 @@ TSunPrimitive = Trait({
 	 * @returns {String}
 	 */
 	renderSVG: function (element, options) {
-		svg.appendChild(element, 'use', this.getUseAttributes(
-			options.winter ? '#sunWinter' : '#sun',
-			'translate('
-				+ options.x
-				+ ','
-				+ options.y
-				+ ') scale('
-				+ options.scale
-				+ ')'
-			)
+		svg.appendChild(
+			element,
+			'use',
+			this.getUseAttributes(options.winter ? '#sunWinter' : '#sun', options)
 		);
 	},
 

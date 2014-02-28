@@ -1,4 +1,4 @@
-var svg = require('../svg')
+var svg = require('../utils/svg')
 	, style = require('style')
 	, Trait = require('trait')
 	, TPrimitive = require('./TPrimitive')
@@ -15,16 +15,10 @@ TMoonPrimitive = Trait({
 	 * @returns {String}
 	 */
 	renderSVG: function (element, options) {
-		svg.appendChild(element, 'use', this.getUseAttributes(
-			'#moon',
-			'translate('
-				+ options.x
-				+ ','
-				+ options.y
-				+ ') scale('
-				+ options.scale
-				+ ')'
-			)
+		svg.appendChild(
+			element,
+			'use',
+			this.getUseAttributes('#moon', options)
 		);
 	},
 

@@ -1,4 +1,4 @@
-var svg = require('../svg')
+var svg = require('../utils/svg')
 	, Trait = require('trait')
 	, TPrimitive = require('./TPrimitive')
 
@@ -12,14 +12,10 @@ TFogPrimitive = Trait({
 	 * @returns {String}
 	 */
 	renderSVG: function (element, options) {
-		svg.appendChild(element, 'use', this.getUseAttributes(
-			'#fog',
-			'translate('
-				+ options.x
-				+ ','
-				+ options.y
-				+ ')'
-			)
+		svg.appendChild(
+			element,
+			'use',
+			this.getUseAttributes('#fog', options)
 		);
 	},
 
