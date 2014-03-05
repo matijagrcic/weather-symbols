@@ -1,8 +1,9 @@
 {
   "name": "yr-weather-symbols",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "dependencies": {
-    "trait": "git://github.com/YR/trait"
+    "trait": "git://github.com/YR/trait",
+    "yr-colours": "git://github.com/YR/yr-colours"
   },
   "devDependencies": {
     "dustjs-linkedin": "*",
@@ -23,13 +24,12 @@
   },
   "main": "src/js/weatherSymbol",
   "repository": "https://github.com/YR/yr-weather-symbols.git",
+  "license": "MIT",
   "private": true,
   "buddy": {
     "build": {
       "js": {
-        "sources": [
-          "src/js"
-        ],
+        "sources": ["src/js"],
         "targets": [
           {
             "input": "src/js/index.js",
@@ -37,7 +37,7 @@
             "boilerplate": true,
             "bootstrap": true,
             "alias": {
-              "dust": "./node_modules/dustjs-linkedin/dist/dust-core.js"
+              "dust": "./node_modules/dustjs-linkedin/dist/dust-core-2.2.8.js"
             }
           },
           {
@@ -48,10 +48,17 @@
           }
         ]
       },
+      "css": {
+        "sources": ["src/css"],
+        "targets": [
+          {
+            "input": "src/css",
+            "output": "."
+          }
+        ]
+      },
       "html": {
-        "sources": [
-          "src/html"
-        ],
+        "sources": ["src/html"],
         "targets": [
           {
             "input": "src/html/",
@@ -63,7 +70,7 @@
     "settings": {
       "server": {
         "directory": ".",
-        "port": 8000
+        "port": 8080
       }
     }
   }

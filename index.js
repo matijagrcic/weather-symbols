@@ -84,29 +84,65 @@
 })(window != null ? window : global);
 
 require.register('dust', function(module, exports, require) {
-  /*! Dust - Asynchronous Templating - v2.3.3
-  * http://linkedin.github.io/dustjs/
-  * Copyright (c) 2014 Aleksander Williams; Released under the MIT License */
-  (function(root) {
-    var dust = {},
-        NONE = 'NONE',
+  //
+  // Dust - Asynchronous Templating v2.2.8
+  // http://akdubya.github.com/dustjs
+  //
+  // Copyright (c) 2010, Aleksander Williams
+  // Released under the MIT License.
+  //
+  
+  /*global console */
+  var dust = {};
+  
+  function getGlobal(){
+    return (function(){
+      return this.dust;
+    }).call(null);
+  }
+  
+  (function(dust) {
+    if(!dust) {
+      return;
+    }
+  
+    var NONE = 'NONE',
         ERROR = 'ERROR',
         WARN = 'WARN',
         INFO = 'INFO',
         DEBUG = 'DEBUG',
         loggingLevels = [DEBUG, INFO, WARN, ERROR, NONE],
-        EMPTY_FUNC = function() {},
-        logger = EMPTY_FUNC,
-        loggerContext = this;
+        logger = {},
+        loggerContext;
   
     dust.debugLevel = NONE;
     dust.silenceErrors = false;
   
-    // Try to find the console logger in global scope
-    if (root && root.console && root.console.log) {
-      logger = root.console.log;
-      loggerContext = root.console;
+    // Try to find the console logger in window scope (browsers) or top level scope (node.js)
+    if (typeof window !== 'undefined' && window && window.console) {
+      loggerContext = window.console;
+    } else if (typeof console !== 'undefined' && console) {
+      loggerContext = console;
     }
+  
+    // robust logger for node.js, modern browsers, and IE <= 9.
+    logger.log = loggerContext ? function() {
+      var originalLog = loggerContext.log;
+        // Do this for normal browsers
+        if (typeof originalLog === 'function') {
+          logger.log = function() {
+            originalLog.apply(loggerContext, arguments);
+          };
+          logger.log.apply(this, arguments);
+        } else {
+          // Do this for IE <= 9
+          logger.log = function() {
+            var message = Array.prototype.slice.apply(arguments).join(' ');
+            originalLog(message);
+          };
+          logger.log.apply(this, arguments);
+        }
+    } : function() { /* no op */ };
   
     /**
      * If dust.isDebug is true, Log dust debug statements, info statements, warning statements, and errors.
@@ -116,18 +152,19 @@ require.register('dust', function(module, exports, require) {
      * @public
      */
     dust.log = function(message, type) {
-      if(dust.isDebug && dust.debugLevel === NONE) {
-        logger.call(loggerContext, '[!!!DEPRECATION WARNING!!!]: dust.isDebug is deprecated.  Set dust.debugLevel instead to the level of logging you want ["debug","info","warn","error","none"]');
+      // dust.isDebug is deprecated, so this conditional will default the debugLevel to INFO if it's set to maintain backcompat.
+      if (dust.isDebug && dust.debugLevel === NONE) {
+        logger.log('[!!!DEPRECATION WARNING!!!]: dust.isDebug is deprecated.  Set dust.debugLevel instead to the level of logging you want ["debug","info","warn","error","none"]');
         dust.debugLevel = INFO;
       }
   
       type = type || INFO;
-      if (loggingLevels.indexOf(type) >= loggingLevels.indexOf(dust.debugLevel)) {
+      if (dust.indexInArray(loggingLevels, type) >= dust.indexInArray(loggingLevels, dust.debugLevel)) {
         if(!dust.logQueue) {
           dust.logQueue = [];
         }
         dust.logQueue.push({message: message, type: type});
-        logger.call(loggerContext, '[DUST ' + type + ']: ' + message);
+        logger.log("[DUST " + type + "]: " + message);
       }
   
       if (!dust.silenceErrors && type === ERROR) {
@@ -147,7 +184,7 @@ require.register('dust', function(module, exports, require) {
      * @public
      */
     dust.onError = function(error, chunk) {
-      logger.call(loggerContext, '[!!!DEPRECATION WARNING!!!]: dust.onError will no longer return a chunk object.');
+      logger.log('[!!!DEPRECATION WARNING!!!]: dust.onError will no longer return a chunk object.');
       dust.log(error.message || error, ERROR);
       if(!dust.silenceErrors) {
         throw error;
@@ -193,9 +230,6 @@ require.register('dust', function(module, exports, require) {
     };
   
     dust.compileFn = function(source, name) {
-      // name is optional. When name is not provided the template can only be rendered using the callable returned by this function.
-      // If a name is provided the compiled template can also be rendered by name.
-      name = name || null;
       var tmpl = dust.loadSource(dust.compile(source, name));
       return function(context, callback) {
         var master = callback ? new Stub(callback) : new Stream();
@@ -245,10 +279,48 @@ require.register('dust', function(module, exports, require) {
       };
     }
   
+    // indexOf shim for arrays for IE <= 8
+    // source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf
+    dust.indexInArray = function(arr, item, fromIndex) {
+      fromIndex = +fromIndex || 0;
+      if (Array.prototype.indexOf) {
+        return arr.indexOf(item, fromIndex);
+      } else {
+      if ( arr === undefined || arr === null ) {
+        throw new TypeError( 'cannot call method "indexOf" of null' );
+      }
+  
+      var length = arr.length; // Hack to convert object.length to a UInt32
+  
+      if (Math.abs(fromIndex) === Infinity) {
+        fromIndex = 0;
+      }
+  
+      if (fromIndex < 0) {
+        fromIndex += length;
+        if (fromIndex < 0) {
+          fromIndex = 0;
+        }
+      }
+  
+      for (;fromIndex < length; fromIndex++) {
+        if (this[fromIndex] === item) {
+          return fromIndex;
+        }
+      }
+  
+      return -1;
+      }
+    };
+  
     dust.nextTick = (function() {
-      return function(callback) {
-        setTimeout(callback,0);
-      };
+      if (typeof process !== 'undefined') {
+        return process.nextTick;
+      } else {
+        return function(callback) {
+          setTimeout(callback,0);
+        };
+      }
     } )();
   
     dust.isEmpty = function(value) {
@@ -388,9 +460,14 @@ require.register('dust', function(module, exports, require) {
           } else {
             ctx = this.global ? this.global[first] : undefined;
           }
-        } else {
+        } else if (ctx) {
           // if scope is limited by a leading dot, don't search up the tree
-          ctx = ctx.head[first];
+          if(ctx.head) {
+            ctx = ctx.head[first];
+          } else {
+            //context's head is empty, value we are searching for is not defined
+            ctx = undefined;
+          }
         }
   
         while (ctx && i < len) {
@@ -473,7 +550,7 @@ require.register('dust', function(module, exports, require) {
   
     Context.prototype.getTemplateName = function() {
       return this.templateName;
-    };
+    }
   
     function Stack(head, tail, idx, len) {
       this.tail = tail;
@@ -498,7 +575,7 @@ require.register('dust', function(module, exports, require) {
         } else if (chunk.error) {
           this.callback(chunk.error);
           dust.log('Chunk error [' + chunk.error + '] thrown. Ceasing to render this template.', WARN);
-          this.flush = EMPTY_FUNC;
+          this.flush = function() {};
           return;
         } else {
           return;
@@ -522,7 +599,7 @@ require.register('dust', function(module, exports, require) {
         } else if (chunk.error) {
           this.emit('error', chunk.error);
           dust.log('Chunk error [' + chunk.error + '] thrown. Ceasing to render this template.', WARN);
-          this.flush = EMPTY_FUNC;
+          this.flush = function() {};
           return;
         } else {
           return;
@@ -913,16 +990,14 @@ require.register('dust', function(module, exports, require) {
       return s;
     };
   
+  })(dust);
   
-    if (typeof exports === 'object') {
-      module.exports = dust;
-    } else {
-      root.dust = dust;
+  if (typeof exports !== 'undefined') {
+    if (typeof process !== 'undefined') {
+      require('./server')(dust);
     }
-  
-  })(this);
-  
-  
+    module.exports = dust;
+  }
 });
 require.register('symbolGroup', function(module, exports, require) {
   var dust = window.dust || require('dust');
@@ -983,6 +1058,74 @@ require.register('utils/capabilities', function(module, exports, require) {
   exports.hasCanvas = hasCanvas;
   exports.hasSVG = hasSVG;
   exports.backingRatio = backingRatio;
+});
+require.register('yr-colours', function(module, exports, require) {
+  module.exports = {
+  	// Symbols
+  	SUN_RAY: '#e88d15',
+  	SUN_CENTRE: '#faba2f',
+  	SUN_HORIZON: '#4d4d4d',
+  	MOON: '#afc1c9',
+  	RAIN: '#1671CC',
+  	SLEET: '#1EB9D8',
+  	SNOW: '#89DDF0',
+  	LIGHTNING: '#c9af16',
+  	WIND: '#565656',
+  
+  	// UI
+  	WHITE: '#fffcf5',
+  	BLACK: '#252422',
+  	BLUE_LIGHT: '#cbd9dd',
+  	BLUE: '#0099cc',
+  	BLUE_DARK: '#061E26',
+  	ORANGE: '#c94a00',
+  	GREY_LIGHT: '#e6e6e6',
+  	GREY: '#808080',
+  	GREY_DARK: '#403d39',
+  	RED: '#df2918',
+  	GREEN: '#46933b',
+  	YELLOW: '#faba2f',
+  	YELLOW_LIGHT: '#fffecc',
+  	EXTREME: '#9e0067',
+  	NIGHT: '#f5f5f5'
+  }
+});
+require.register('lodash._isnative', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  
+  /** Used for native method references */
+  var objectProto = Object.prototype;
+  
+  /** Used to resolve the internal [[Class]] of values */
+  var toString = objectProto.toString;
+  
+  /** Used to detect if a method is native */
+  var reNative = RegExp('^' +
+    String(toString)
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/toString| for [^\]]+/g, '.*?') + '$'
+  );
+  
+  /**
+   * Checks if `value` is a native function.
+   *
+   * @private
+   * @param {*} value The value to check.
+   * @returns {boolean} Returns `true` if the `value` is a native function, else `false`.
+   */
+  function isNative(value) {
+    return typeof value == 'function' && reNative.test(value);
+  }
+  
+  module.exports = isNative;
+  
 });
 require.register('lodash._objecttypes', function(module, exports, require) {
   /**
@@ -1047,218 +1190,6 @@ require.register('lodash.isobject', function(module, exports, require) {
   }
   
   module.exports = isObject;
-  
-});
-require.register('lodash.isnumber', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /** `Object#toString` result shortcuts */
-  var numberClass = '[object Number]';
-  
-  /** Used for native method references */
-  var objectProto = Object.prototype;
-  
-  /** Used to resolve the internal [[Class]] of values */
-  var toString = objectProto.toString;
-  
-  /**
-   * Checks if `value` is a number.
-   *
-   * Note: `NaN` is considered a number. See http://es5.github.io/#x8.5.
-   *
-   * @static
-   * @memberOf _
-   * @category Objects
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if the `value` is a number, else `false`.
-   * @example
-   *
-   * _.isNumber(8.4 * 5);
-   * // => true
-   */
-  function isNumber(value) {
-    return typeof value == 'number' ||
-      value && typeof value == 'object' && toString.call(value) == numberClass || false;
-  }
-  
-  module.exports = isNumber;
-  
-});
-require.register('lodash.isnan', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var isNumber = require('lodash.isnumber');
-  
-  /**
-   * Checks if `value` is `NaN`.
-   *
-   * Note: This is not the same as native `isNaN` which will return `true` for
-   * `undefined` and other non-numeric values. See http://es5.github.io/#x15.1.2.4.
-   *
-   * @static
-   * @memberOf _
-   * @category Objects
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if the `value` is `NaN`, else `false`.
-   * @example
-   *
-   * _.isNaN(NaN);
-   * // => true
-   *
-   * _.isNaN(new Number(NaN));
-   * // => true
-   *
-   * isNaN(undefined);
-   * // => true
-   *
-   * _.isNaN(undefined);
-   * // => false
-   */
-  function isNaN(value) {
-    // `NaN` as a primitive is the only value that is not equal to itself
-    // (perform the [[Class]] check first to avoid errors with some host objects in IE)
-    return isNumber(value) && value != +value;
-  }
-  
-  module.exports = isNaN;
-  
-});
-require.register('lodash._isnative', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /** Used for native method references */
-  var objectProto = Object.prototype;
-  
-  /** Used to resolve the internal [[Class]] of values */
-  var toString = objectProto.toString;
-  
-  /** Used to detect if a method is native */
-  var reNative = RegExp('^' +
-    String(toString)
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/toString| for [^\]]+/g, '.*?') + '$'
-  );
-  
-  /**
-   * Checks if `value` is a native function.
-   *
-   * @private
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if the `value` is a native function, else `false`.
-   */
-  function isNative(value) {
-    return typeof value == 'function' && reNative.test(value);
-  }
-  
-  module.exports = isNative;
-  
-});
-require.register('lodash.isarray', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var isNative = require('lodash._isnative');
-  
-  /** `Object#toString` result shortcuts */
-  var arrayClass = '[object Array]';
-  
-  /** Used for native method references */
-  var objectProto = Object.prototype;
-  
-  /** Used to resolve the internal [[Class]] of values */
-  var toString = objectProto.toString;
-  
-  /* Native method shortcuts for methods with the same name as other `lodash` methods */
-  var nativeIsArray = isNative(nativeIsArray = Array.isArray) && nativeIsArray;
-  
-  /**
-   * Checks if `value` is an array.
-   *
-   * @static
-   * @memberOf _
-   * @type Function
-   * @category Objects
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if the `value` is an array, else `false`.
-   * @example
-   *
-   * (function() { return _.isArray(arguments); })();
-   * // => false
-   *
-   * _.isArray([1, 2, 3]);
-   * // => true
-   */
-  var isArray = nativeIsArray || function(value) {
-    return value && typeof value == 'object' && typeof value.length == 'number' &&
-      toString.call(value) == arrayClass || false;
-  };
-  
-  module.exports = isArray;
-  
-});
-require.register('lodash.isstring', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /** `Object#toString` result shortcuts */
-  var stringClass = '[object String]';
-  
-  /** Used for native method references */
-  var objectProto = Object.prototype;
-  
-  /** Used to resolve the internal [[Class]] of values */
-  var toString = objectProto.toString;
-  
-  /**
-   * Checks if `value` is a string.
-   *
-   * @static
-   * @memberOf _
-   * @category Objects
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if the `value` is a string, else `false`.
-   * @example
-   *
-   * _.isString('fred');
-   * // => true
-   */
-  function isString(value) {
-    return typeof value == 'string' ||
-      value && typeof value == 'object' && toString.call(value) == stringClass || false;
-  }
-  
-  module.exports = isString;
   
 });
 require.register('lodash.noop', function(module, exports, require) {
@@ -1907,359 +1838,6 @@ require.register('lodash._basecreatecallback', function(module, exports, require
   module.exports = baseCreateCallback;
   
 });
-require.register('lodash.forin', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var baseCreateCallback = require('lodash._basecreatecallback'),
-      objectTypes = require('lodash._objecttypes');
-  
-  /**
-   * Iterates over own and inherited enumerable properties of an object,
-   * executing the callback for each property. The callback is bound to `thisArg`
-   * and invoked with three arguments; (value, key, object). Callbacks may exit
-   * iteration early by explicitly returning `false`.
-   *
-   * @static
-   * @memberOf _
-   * @type Function
-   * @category Objects
-   * @param {Object} object The object to iterate over.
-   * @param {Function} [callback=identity] The function called per iteration.
-   * @param {*} [thisArg] The `this` binding of `callback`.
-   * @returns {Object} Returns `object`.
-   * @example
-   *
-   * function Shape() {
-   *   this.x = 0;
-   *   this.y = 0;
-   * }
-   *
-   * Shape.prototype.move = function(x, y) {
-   *   this.x += x;
-   *   this.y += y;
-   * };
-   *
-   * _.forIn(new Shape, function(value, key) {
-   *   console.log(key);
-   * });
-   * // => logs 'x', 'y', and 'move' (property order is not guaranteed across environments)
-   */
-  var forIn = function(collection, callback, thisArg) {
-    var index, iterable = collection, result = iterable;
-    if (!iterable) return result;
-    if (!objectTypes[typeof iterable]) return result;
-    callback = callback && typeof thisArg == 'undefined' ? callback : baseCreateCallback(callback, thisArg, 3);
-      for (index in iterable) {
-        if (callback(iterable[index], index, collection) === false) return result;
-      }
-    return result
-  };
-  
-  module.exports = forIn;
-  
-});
-require.register('lodash._arraypool', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /** Used to pool arrays and objects used internally */
-  var arrayPool = [];
-  
-  module.exports = arrayPool;
-  
-});
-require.register('lodash._getarray', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var arrayPool = require('lodash._arraypool');
-  
-  /**
-   * Gets an array from the array pool or creates a new one if the pool is empty.
-   *
-   * @private
-   * @returns {Array} The array from the pool.
-   */
-  function getArray() {
-    return arrayPool.pop() || [];
-  }
-  
-  module.exports = getArray;
-  
-});
-require.register('lodash._maxpoolsize', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /** Used as the max size of the `arrayPool` and `objectPool` */
-  var maxPoolSize = 40;
-  
-  module.exports = maxPoolSize;
-  
-});
-require.register('lodash._releasearray', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var arrayPool = require('lodash._arraypool'),
-      maxPoolSize = require('lodash._maxpoolsize');
-  
-  /**
-   * Releases the given array back to the array pool.
-   *
-   * @private
-   * @param {Array} [array] The array to release.
-   */
-  function releaseArray(array) {
-    array.length = 0;
-    if (arrayPool.length < maxPoolSize) {
-      arrayPool.push(array);
-    }
-  }
-  
-  module.exports = releaseArray;
-  
-});
-require.register('lodash._baseisequal', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var forIn = require('lodash.forin'),
-      getArray = require('lodash._getarray'),
-      isFunction = require('lodash.isfunction'),
-      objectTypes = require('lodash._objecttypes'),
-      releaseArray = require('lodash._releasearray');
-  
-  /** `Object#toString` result shortcuts */
-  var argsClass = '[object Arguments]',
-      arrayClass = '[object Array]',
-      boolClass = '[object Boolean]',
-      dateClass = '[object Date]',
-      numberClass = '[object Number]',
-      objectClass = '[object Object]',
-      regexpClass = '[object RegExp]',
-      stringClass = '[object String]';
-  
-  /** Used for native method references */
-  var objectProto = Object.prototype;
-  
-  /** Used to resolve the internal [[Class]] of values */
-  var toString = objectProto.toString;
-  
-  /** Native method shortcuts */
-  var hasOwnProperty = objectProto.hasOwnProperty;
-  
-  /**
-   * The base implementation of `_.isEqual`, without support for `thisArg` binding,
-   * that allows partial "_.where" style comparisons.
-   *
-   * @private
-   * @param {*} a The value to compare.
-   * @param {*} b The other value to compare.
-   * @param {Function} [callback] The function to customize comparing values.
-   * @param {Function} [isWhere=false] A flag to indicate performing partial comparisons.
-   * @param {Array} [stackA=[]] Tracks traversed `a` objects.
-   * @param {Array} [stackB=[]] Tracks traversed `b` objects.
-   * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
-   */
-  function baseIsEqual(a, b, callback, isWhere, stackA, stackB) {
-    // used to indicate that when comparing objects, `a` has at least the properties of `b`
-    if (callback) {
-      var result = callback(a, b);
-      if (typeof result != 'undefined') {
-        return !!result;
-      }
-    }
-    // exit early for identical values
-    if (a === b) {
-      // treat `+0` vs. `-0` as not equal
-      return a !== 0 || (1 / a == 1 / b);
-    }
-    var type = typeof a,
-        otherType = typeof b;
-  
-    // exit early for unlike primitive values
-    if (a === a &&
-        !(a && objectTypes[type]) &&
-        !(b && objectTypes[otherType])) {
-      return false;
-    }
-    // exit early for `null` and `undefined` avoiding ES3's Function#call behavior
-    // http://es5.github.io/#x15.3.4.4
-    if (a == null || b == null) {
-      return a === b;
-    }
-    // compare [[Class]] names
-    var className = toString.call(a),
-        otherClass = toString.call(b);
-  
-    if (className == argsClass) {
-      className = objectClass;
-    }
-    if (otherClass == argsClass) {
-      otherClass = objectClass;
-    }
-    if (className != otherClass) {
-      return false;
-    }
-    switch (className) {
-      case boolClass:
-      case dateClass:
-        // coerce dates and booleans to numbers, dates to milliseconds and booleans
-        // to `1` or `0` treating invalid dates coerced to `NaN` as not equal
-        return +a == +b;
-  
-      case numberClass:
-        // treat `NaN` vs. `NaN` as equal
-        return (a != +a)
-          ? b != +b
-          // but treat `+0` vs. `-0` as not equal
-          : (a == 0 ? (1 / a == 1 / b) : a == +b);
-  
-      case regexpClass:
-      case stringClass:
-        // coerce regexes to strings (http://es5.github.io/#x15.10.6.4)
-        // treat string primitives and their corresponding object instances as equal
-        return a == String(b);
-    }
-    var isArr = className == arrayClass;
-    if (!isArr) {
-      // unwrap any `lodash` wrapped values
-      var aWrapped = hasOwnProperty.call(a, '__wrapped__'),
-          bWrapped = hasOwnProperty.call(b, '__wrapped__');
-  
-      if (aWrapped || bWrapped) {
-        return baseIsEqual(aWrapped ? a.__wrapped__ : a, bWrapped ? b.__wrapped__ : b, callback, isWhere, stackA, stackB);
-      }
-      // exit for functions and DOM nodes
-      if (className != objectClass) {
-        return false;
-      }
-      // in older versions of Opera, `arguments` objects have `Array` constructors
-      var ctorA = a.constructor,
-          ctorB = b.constructor;
-  
-      // non `Object` object instances with different constructors are not equal
-      if (ctorA != ctorB &&
-            !(isFunction(ctorA) && ctorA instanceof ctorA && isFunction(ctorB) && ctorB instanceof ctorB) &&
-            ('constructor' in a && 'constructor' in b)
-          ) {
-        return false;
-      }
-    }
-    // assume cyclic structures are equal
-    // the algorithm for detecting cyclic structures is adapted from ES 5.1
-    // section 15.12.3, abstract operation `JO` (http://es5.github.io/#x15.12.3)
-    var initedStack = !stackA;
-    stackA || (stackA = getArray());
-    stackB || (stackB = getArray());
-  
-    var length = stackA.length;
-    while (length--) {
-      if (stackA[length] == a) {
-        return stackB[length] == b;
-      }
-    }
-    var size = 0;
-    result = true;
-  
-    // add `a` and `b` to the stack of traversed objects
-    stackA.push(a);
-    stackB.push(b);
-  
-    // recursively compare objects and arrays (susceptible to call stack limits)
-    if (isArr) {
-      // compare lengths to determine if a deep comparison is necessary
-      length = a.length;
-      size = b.length;
-      result = size == length;
-  
-      if (result || isWhere) {
-        // deep compare the contents, ignoring non-numeric properties
-        while (size--) {
-          var index = length,
-              value = b[size];
-  
-          if (isWhere) {
-            while (index--) {
-              if ((result = baseIsEqual(a[index], value, callback, isWhere, stackA, stackB))) {
-                break;
-              }
-            }
-          } else if (!(result = baseIsEqual(a[size], value, callback, isWhere, stackA, stackB))) {
-            break;
-          }
-        }
-      }
-    }
-    else {
-      // deep compare objects using `forIn`, instead of `forOwn`, to avoid `Object.keys`
-      // which, in this case, is more costly
-      forIn(b, function(value, key, b) {
-        if (hasOwnProperty.call(b, key)) {
-          // count the number of properties.
-          size++;
-          // deep compare each property value.
-          return (result = hasOwnProperty.call(a, key) && baseIsEqual(a[key], value, callback, isWhere, stackA, stackB));
-        }
-      });
-  
-      if (result && !isWhere) {
-        // ensure both objects have the same number of properties
-        forIn(a, function(value, key, a) {
-          if (hasOwnProperty.call(a, key)) {
-            // `size` will be `-1` if `a` has more properties than `b`
-            return (result = --size > -1);
-          }
-        });
-      }
-    }
-    stackA.pop();
-    stackB.pop();
-  
-    if (initedStack) {
-      releaseArray(stackA);
-      releaseArray(stackB);
-    }
-    return result;
-  }
-  
-  module.exports = baseIsEqual;
-  
-});
 require.register('lodash._shimkeys', function(module, exports, require) {
   /**
    * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
@@ -2340,133 +1918,6 @@ require.register('lodash.keys', function(module, exports, require) {
   module.exports = keys;
   
 });
-require.register('lodash.property', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  
-  /**
-   * Creates a "_.pluck" style function, which returns the `key` value of a
-   * given object.
-   *
-   * @static
-   * @memberOf _
-   * @category Utilities
-   * @param {string} key The name of the property to retrieve.
-   * @returns {Function} Returns the new function.
-   * @example
-   *
-   * var characters = [
-   *   { 'name': 'fred',   'age': 40 },
-   *   { 'name': 'barney', 'age': 36 }
-   * ];
-   *
-   * var getName = _.property('name');
-   *
-   * _.map(characters, getName);
-   * // => ['barney', 'fred']
-   *
-   * _.sortBy(characters, getName);
-   * // => [{ 'name': 'barney', 'age': 36 }, { 'name': 'fred',   'age': 40 }]
-   */
-  function property(key) {
-    return function(object) {
-      return object[key];
-    };
-  }
-  
-  module.exports = property;
-  
-});
-require.register('lodash.createcallback', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var baseCreateCallback = require('lodash._basecreatecallback'),
-      baseIsEqual = require('lodash._baseisequal'),
-      isObject = require('lodash.isobject'),
-      keys = require('lodash.keys'),
-      property = require('lodash.property');
-  
-  /**
-   * Produces a callback bound to an optional `thisArg`. If `func` is a property
-   * name the created callback will return the property value for a given element.
-   * If `func` is an object the created callback will return `true` for elements
-   * that contain the equivalent object properties, otherwise it will return `false`.
-   *
-   * @static
-   * @memberOf _
-   * @category Utilities
-   * @param {*} [func=identity] The value to convert to a callback.
-   * @param {*} [thisArg] The `this` binding of the created callback.
-   * @param {number} [argCount] The number of arguments the callback accepts.
-   * @returns {Function} Returns a callback function.
-   * @example
-   *
-   * var characters = [
-   *   { 'name': 'barney', 'age': 36 },
-   *   { 'name': 'fred',   'age': 40 }
-   * ];
-   *
-   * // wrap to create custom callback shorthands
-   * _.createCallback = _.wrap(_.createCallback, function(func, callback, thisArg) {
-   *   var match = /^(.+?)__([gl]t)(.+)$/.exec(callback);
-   *   return !match ? func(callback, thisArg) : function(object) {
-   *     return match[2] == 'gt' ? object[match[1]] > match[3] : object[match[1]] < match[3];
-   *   };
-   * });
-   *
-   * _.filter(characters, 'age__gt38');
-   * // => [{ 'name': 'fred', 'age': 40 }]
-   */
-  function createCallback(func, thisArg, argCount) {
-    var type = typeof func;
-    if (func == null || type == 'function') {
-      return baseCreateCallback(func, thisArg, argCount);
-    }
-    // handle "_.pluck" style callback shorthands
-    if (type != 'object') {
-      return property(func);
-    }
-    var props = keys(func),
-        key = props[0],
-        a = func[key];
-  
-    // handle "_.where" style callback shorthands
-    if (props.length == 1 && a === a && !isObject(a)) {
-      // fast path the common case of providing an object with a single
-      // property containing a primitive value
-      return function(object) {
-        var b = object[key];
-        return a === b && (a !== 0 || (1 / a == 1 / b));
-      };
-    }
-    return function(object) {
-      var length = props.length,
-          result = false;
-  
-      while (length--) {
-        if (!(result = baseIsEqual(object[props[length]], func[props[length]], null, true))) {
-          break;
-        }
-      }
-      return result;
-    };
-  }
-  
-  module.exports = createCallback;
-  
-});
 require.register('lodash.forown', function(module, exports, require) {
   /**
    * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
@@ -2518,781 +1969,6 @@ require.register('lodash.forown', function(module, exports, require) {
   };
   
   module.exports = forOwn;
-  
-});
-require.register('lodash.map', function(module, exports, require) {
-  /**
-   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
-   * Build: `lodash modularize modern exports="npm" -o ./npm/`
-   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
-   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
-   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-   * Available under MIT license <http://lodash.com/license>
-   */
-  var createCallback = require('lodash.createcallback'),
-      forOwn = require('lodash.forown');
-  
-  /**
-   * Creates an array of values by running each element in the collection
-   * through the callback. The callback is bound to `thisArg` and invoked with
-   * three arguments; (value, index|key, collection).
-   *
-   * If a property name is provided for `callback` the created "_.pluck" style
-   * callback will return the property value of the given element.
-   *
-   * If an object is provided for `callback` the created "_.where" style callback
-   * will return `true` for elements that have the properties of the given object,
-   * else `false`.
-   *
-   * @static
-   * @memberOf _
-   * @alias collect
-   * @category Collections
-   * @param {Array|Object|string} collection The collection to iterate over.
-   * @param {Function|Object|string} [callback=identity] The function called
-   *  per iteration. If a property name or object is provided it will be used
-   *  to create a "_.pluck" or "_.where" style callback, respectively.
-   * @param {*} [thisArg] The `this` binding of `callback`.
-   * @returns {Array} Returns a new array of the results of each `callback` execution.
-   * @example
-   *
-   * _.map([1, 2, 3], function(num) { return num * 3; });
-   * // => [3, 6, 9]
-   *
-   * _.map({ 'one': 1, 'two': 2, 'three': 3 }, function(num) { return num * 3; });
-   * // => [3, 6, 9] (property order is not guaranteed across environments)
-   *
-   * var characters = [
-   *   { 'name': 'barney', 'age': 36 },
-   *   { 'name': 'fred',   'age': 40 }
-   * ];
-   *
-   * // using "_.pluck" callback shorthand
-   * _.map(characters, 'name');
-   * // => ['barney', 'fred']
-   */
-  function map(collection, callback, thisArg) {
-    var index = -1,
-        length = collection ? collection.length : 0;
-  
-    callback = createCallback(callback, thisArg, 3);
-    if (typeof length == 'number') {
-      var result = Array(length);
-      while (++index < length) {
-        result[index] = callback(collection[index], index, collection);
-      }
-    } else {
-      result = [];
-      forOwn(collection, function(value, key, collection) {
-        result[++index] = callback(value, key, collection);
-      });
-    }
-    return result;
-  }
-  
-  module.exports = map;
-  
-});
-require.register('style', function(module, exports, require) {
-  // TODO: handle setting special shortcut transform properties with arrays (translate, scale)?
-  
-  var isObject = require('lodash.isobject')
-  	, isNan = require('lodash.isnan')
-  	, isArray = require('lodash.isarray')
-  	, isString = require('lodash.isstring')
-  	, map = require('lodash.map')
-  	, win = window
-  	, doc = window.document
-  	, el = doc.createElement('div')
-  
-  		// Hash of unit values
-  	, numeric = {
-  			'top': 'px',
-  			'bottom': 'px',
-  			'left': 'px',
-  			'right': 'px',
-  			'width': 'px',
-  			'height': 'px',
-  			'margin-top': 'px',
-  			'margin-bottom': 'px',
-  			'margin-left': 'px',
-  			'margin-right': 'px',
-  			'padding-top': 'px',
-  			'padding-bottom': 'px',
-  			'padding-left': 'px',
-  			'padding-right': 'px',
-  			'border-bottom-left-radius': 'px',
-  			'border-bottom-right-radius': 'px',
-  			'border-top-left-radius': 'px',
-  			'border-top-right-radius': 'px',
-   			'transition-duration': 'ms',
-   			'opacity': '',
-  			'font-size': 'px',
-  			'translateX': 'px',
-  			'translateY': 'px',
-  			'translateZ': 'px',
-  			'scaleX': '',
-  			'scaleY': '',
-  			'scaleZ': '',
-  			'rotate': 'deg',
-  			'rotateX': 'deg',
-  			'rotateY': 'deg',
-  			'rotateZ': 'deg',
-  			'skewX': 'px',
-  			'skewY': 'px'
-  		}
-  	, colour = {
-  			'background-color': true,
-  			'color': true,
-  			'border-color': true
-  		}
-  		// Hash of shorthand properties
-  	, shorthand = {
-  			'border-radius': ['border-bottom-left-radius', 'border-bottom-right-radius', 'border-top-left-radius', 'border-top-right-radius'],
-  			'border-color': ['border-bottom-color', 'border-left-color', 'border-top-color', 'border-right-color'],
-  			'margin': ['margin-top', 'margin-right', 'margin-left', 'margin-bottom'],
-  			'padding': ['padding-top', 'padding-right', 'padding-left', 'padding-bottom']
-  		}
-  		// Hash of transform properties
-  	, transform = {
-  			'transform': true,
-  			'translate': true,
-  			'translateX': true,
-  			'translateY': true,
-  			'translate3d': true,
-  			'translateZ': true,
-  			'rotate': true,
-  			'rotate3d': true,
-  			'rotateX': true,
-  			'rotateY': true,
-  			'rotateZ': true,
-  			'scale': true,
-  			'scaleX': true,
-  			'scaleY': true,
-  			'scale3d': true,
-  			'scaleZ': true,
-  			'skewX': true,
-  			'skewY': true,
-  			'perspective': true,
-  			'matrix': true,
-  			'matrix3d': true
-  		}
-  
-  	, platformStyles = {}
-  	, platformPrefix = ''
-  
-  	, RE_UNITS = /(px|%|em|ms|s|deg)$/
-  	, RE_IE_OPACITY = /opacity=(\d+)/i
-  	, RE_RGB = /rgb\((\d+),\s?(\d+),\s?(\d+)\)/
-  	, RE_MATRIX = /^matrix(?:3d)?\(([^\)]+)/
-  	, VENDOR_PREFIXES = ['-webkit-', '-moz-', '-ms-', '-o-']
-  	, MATRIX_IDENTITY = [[1, 0, 0, 1, 0, 0], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]]
-  	, MATRIX_PROPERTY_INDEX = {
-  		translateX: [4,12],
-  		translateY: [5,13],
-  		translateZ: [null,14],
-  		scaleX: [0,0],
-  		scaleY: [3,5],
-  		scaleZ: [null,10],
-  		rotate: [0,0],
-  		rotateX: [null,5],
-  		rotateY: [null,0],
-  		rotateZ: [null,0],
-  		skewY: [1,1],
-  		skewX: [2,2]
-  	};
-  
-  // Store all possible styles this platform supports
-  var s = current(doc.documentElement)
-  	, add = function (prop) {
-  			platformStyles[prop] = true;
-  			// Grab the prefix style
-  			if (!platformPrefix && prop.charAt(0) == '-') {
-  				platformPrefix = /^-\w+-/.exec(prop)[0];
-  			}
-  		};
-  
-  if (s.length) {
-  	for (var i = 0, n = s.length; i < n; i++) {
-  		add(s[i]);
-  	}
-  } else {
-  	for (var prop in s) {
-  		add(prop);
-  	}
-  }
-  
-  // Store opacity property name (normalize IE opacity/filter)
-  var opacity = !platformStyles['opacity'] && platformStyles['filter'] ? 'filter' : 'opacity';
-  
-  // API
-  exports.isSupported = isSupported;
-  exports.getPrefixed = getPrefixed;
-  exports.getShorthand = getShorthand;
-  exports.getAll = getAll;
-  exports.expandShorthand = expandShorthand;
-  exports.parseOpacity = parseOpacity;
-  exports.getOpacityValue = getOpacityValue;
-  exports.parseNumber = parseNumber;
-  exports.parseTransform = parseTransform;
-  exports.getStyle = getStyle;
-  exports.getNumericStyle = getNumericStyle;
-  exports.getDocumentStyle = getDocumentStyle;
-  exports.setStyle = setStyle;
-  exports.clearStyle = clearStyle;
-  exports.platformStyles = platformStyles;
-  exports.platformPrefix = platformPrefix;
-  // CSS3 feature tests (also forces cache inclusion)
-  exports.hasTransitions = isSupported('transition');
-  exports.hasTransforms = isSupported('transform');
-  exports.has3DTransforms = (function () {
-  	if (exports.hasTransforms) {
-  		var prop = camelCase(getPrefixed('transform'));
-  		el.style[prop] = 'translateZ(10px)';
-  		return el.style[prop] != '';
-  	}
-  	return false;
-  })();
-  
-  /**
-   * Determine if 'property' is supported on this platform
-   * @returns {Boolean}
-   */
-  function isSupported (property) {
-  	var props = [property, platformPrefix + property]
-  		, support = false
-  		, prop;
-  
-  	for (var i = 0, n = props.length; i < n; i++) {
-  		prop = props[i];
-  		// Use cached
-  		if (exports.platformStyles[prop]) return true;
-  		if (typeof el.style[prop] === 'string'
-  			|| typeof el.style[camelCase(prop)] === 'string') {
-  				support = true;
-  				exports.platformStyles[prop] = true;
-  				break;
-  		}
-  	}
-  
-  	return support;
-  }
-  
-  /**
-   * Retrieve the vendor prefixed version of the property
-   * @param {String} property
-   * @returns {String}
-   */
-  function getPrefixed (property) {
-  	if (typeof property === 'string') {
-  		// Handle transform pseudo-properties
-  		if (transform[property]) {
-  			property = 'transform';
-  		}
-  
-  		if (exports.platformStyles[property]) return property;
-  
-  		if (isSupported(property)) {
-  			if (exports.platformStyles[platformPrefix + property]) {
-  				property = platformPrefix + property;
-  			}
-  		}
-  	}
-  
-  	return property;
-  }
-  
-  /**
-   * Retrieve a proxy property to use for shorthand properties
-   * @param {String} property
-   * @returns {String}
-   */
-  function getShorthand (property) {
-  	if (shorthand[property] != null) {
-  		return shorthand[property][0];
-  	} else {
-  		return property;
-  	}
-  }
-  
-  /**
-   * Retrieve all possible variations of the property
-   * @param {String} property
-   * @returns {Array}
-   */
-  function getAll (property) {
-  	var all = [];
-  
-  	// Handle transform pseudo-properties
-  	if (transform[property]) {
-  		property = 'transform';
-  	}
-  
-  	all.push(property);
-  	// Handle shorthands
-  	if (shorthand[property]) {
-  		all = all.concat(shorthand[property]);
-  	}
-  	// Automatically add vendor prefix
-  	for (var i = 0, n = all.length; i < n; i++) {
-  		all.push(platformPrefix + all[i]);
-  	}
-  
-  	return all;
-  }
-  
-  /**
-   * Expand shorthand properties
-   * @param {String} property
-   * @param {Object} value
-   * @returns {Object|String}
-   */
-  function expandShorthand (property, value) {
-  	if (shorthand[property] != null) {
-  		var props = {};
-  		for (var i = 0, n = shorthand[property].length; i < n; i++) {
-  			props[shorthand[property][i]] = value;
-  		}
-  		return props;
-  	} else {
-  		return property;
-  	}
-  }
-  
-  /**
-   * Parse current opacity value
-   * @param {String} value
-   * @returns {Number}
-   */
-  function parseOpacity (value) {
-  	var match;
-  	if (value === '') {
-  		return null;
-  	// IE case
-  	} else if (opacity === 'filter') {
-  		match = value.match(RE_IE_OPACITY);
-  		if (match != null) {
-  			return parseInt(match[1], 10) / 100;
-  		}
-  	} else {
-  		return parseFloat(value);
-  	}
-  }
-  
-  /**
-   * Convert opacity to IE filter syntax
-   * @param {String} value
-   * @returns {String}
-   */
-  function getOpacityValue (value) {
-  	var val = parseFloat(value);
-  	if (opacity === 'filter') {
-  		val = "alpha(opacity=" + (val * 100) + ")";
-  	}
-  	return val;
-  }
-  
-  /**
-   * Split a value into a number and unit
-   * @param {String} value
-   * @param {String} property
-   * @returns {Array}
-   */
-  function parseNumber (value, property) {
-  	var channels, num, unit, unitTest;
-  
-  	if (value == null || value == 'none') {
-  		value = 0;
-  	}
-  
-  	// Handle arrays of values (translate, scale)
-  	if (isArray(value)) {
-  		return map(value, function (val) {
-  			return parseNumber(val, property);
-  		});
-  	}
-  
-  	// Handle colours
-  	if (colour[property]) {
-  		// rgb()
-  		if (value != null && value.charAt(0) !== '#') {
-  			channels = RE_RGB.exec(value);
-  			if (channels) {
-  				return ["#" + ((1 << 24) | (channels[1] << 16) | (channels[2] << 8) | channels[3]).toString(16).slice(1), 'hex'];
-  			} else {
-  				return ['#ffffff', 'hex'];
-  			}
-  		} else {
-  			return [value || '#ffffff', 'hex'];
-  		}
-  
-  	// Handle numbers
-  	} else {
-  		num = parseFloat(value);
-  		if (isNan(num)) {
-  			return [value, ''];
-  		} else {
-  			unitTest = RE_UNITS.exec(value);
-  			// Set unit or default
-  			unit = (unitTest != null)
-  				? unitTest[1]
-  				: ((numeric[property] != null)
-  						? numeric[property]
-  						: 'px');
-  			return [num, unit];
-  		}
-  	}
-  }
-  
-  /**
-   * Retrieve a 'property' from a transform 2d or 3d 'matrix'
-   * @param {String|Array} matrix
-   * @param {String} property
-   * @returns {String|Number|Array}
-   */
-  function parseTransform (matrix, property) {
-  	var m = matrixStringToArray(matrix)
-  		, is3D = (m && m.length > 6) ? 1 : 0;
-  
-  	if (m) {
-  		switch (property) {
-  			case 'matrix':
-  			case 'matrix3d':
-  				return m;
-  			case 'translateX':
-  			case 'translateY':
-  				return ''
-  					+ m[MATRIX_PROPERTY_INDEX[property][is3D]]
-  					+ 'px';
-  			case 'translateZ':
-  				return ''
-  					+ (is3D ? m[MATRIX_PROPERTY_INDEX[property][is3D]] : '0')
-  					+ 'px';
-  			case 'translate':
-  				return [parseTransform(matrix, 'translateX'), parseTransform(matrix, 'translateY')];
-  			case 'translate3d':
-  				return [parseTransform(matrix, 'translateX'), parseTransform(matrix, 'translateY'), parseTransform(matrix, 'translateZ')];
-  			case 'scaleX':
-  			case 'scaleY':
-  				return m[MATRIX_PROPERTY_INDEX[property][is3D]];
-  			case 'scaleZ':
-  				return is3D ? m[10] : 1;
-  			case 'scale':
-  				return [parseTransform(matrix, 'scaleX'), parseTransform(matrix, 'scaleY')];
-  			case 'scale3d':
-  				return [parseTransform(matrix, 'scaleX'), parseTransform(matrix, 'scaleY'), parseTransform(matrix, 'scaleZ')];
-  			case 'rotate':
-  			case 'rotateY':
-  			case 'rotateZ':
-  				return ''
-  					+ (Math.acos(m[0]) * 180) / Math.PI
-  					+ 'deg';
-  			case 'rotateX':
-  				return ''
-  					+ (Math.acos(m[5]) * 180) / Math.PI
-  					+ 'deg';
-  			case 'skewX':
-  				return ''
-  					+ (Math.atan(m[2]) * 180) / Math.PI
-  					+ 'deg';
-  			case 'skewY':
-  				return ''
-  					+ (Math.atan(m[1]) * 180) / Math.PI
-  					+ 'deg';
-  		}
-  	}
-  
-  	return matrix;
-  }
-  
-  /**
-   * Convert a matrix property to a transform style string
-   * Handles existing transforms and special grouped properties
-   * @param {Element} element
-   * @param {String} property
-   * @param {String|Array} value
-   * @returns {String}
-   */
-  function generateTransform (element, property, value) {
-  	var matrix = current(element, getPrefixed(property))
-  		, m, m1, is3D, idx, len;
-  
-  	if (matrix == 'none') matrix = '';
-  
-  	// Reset existing matrix, preserving translations
-  	if (matrix) {
-  		if (m = matrixStringToArray(matrix)) {
-  			is3D = m.length > 6 ? 1 : 0;
-  			len = is3D ? 3 : 2;
-  			idx = is3D ? 12 : 4;
-  			// Preserve translations
-  			if (!(~property.indexOf('translate'))) {
-  				m1 = MATRIX_IDENTITY[is3D].slice(0, idx)
-  					.concat(m.slice(idx, idx + len));
-  				if (is3D) m1.push(MATRIX_IDENTITY[is3D].slice(-1));
-  				m = m1;
-  			// Preserve translations and nullify changed
-  			} else {
-  				if (property == 'translate' || property == 'translate3d') {
-  					m1 = m.slice(0, idx)
-  						.concat(MATRIX_IDENTITY[is3D].slice(idx, idx + len));
-  					if (is3D) m1.push(m.slice(-1));
-  					m = m1;
-  				} else if (property == 'translateX' || property == 'translateY' || property == 'translateZ') {
-  					idx = MATRIX_PROPERTY_INDEX[property][is3D];
-  					if (idx) m[idx] = MATRIX_IDENTITY[is3D][idx];
-  				}
-  			}
-  
-  			matrix = is3D ? 'matrix3d' : 'matrix'
-  				+ '('
-  				+ m.join(', ')
-  				+ ') ';
-  		}
-  	}
-  
-  	if (numeric[property] != null) {
-  		return ''
-  			+ matrix
-  			+ property
-  			+ '('
-  			+ value
-  			+ ')';
-  	// Grouped properties
-  	} else {
-  		switch (property) {
-  			case 'transform':
-  			case 'transform3d':
-  				return value;
-  			case 'matrix':
-  			case 'matrix3d':
-  				return ''
-  					+ property
-  					+ '('
-  					+ value
-  					+ ')';
-  			case 'translate':
-  			case 'translate3d':
-  				if (isArray(value)) {
-  					// Add default unit
-  					value = map(value, function(item) {
-  						return !isString(item) ? item + 'px': item;
-  					})
-  					.join(', ');
-  				}
-  				return ''
-  					+ matrix
-  					+ property
-  					+ '('
-  					+ value
-  					+ ')';
-  			case 'scale':
-  			case 'scale3d':
-  				if (isArray(value)) {
-  					value = value.join(', ');
-  				}
-  				return ''
-  					+ matrix
-  					+ property
-  					+ '('
-  					+ value
-  					+ ')';
-  		}
-  	}
-  }
-  
-  /**
-   * Retrieve the style for 'property'
-   * @param {Element} element
-   * @param {String} property
-   * @returns {Object}
-   */
-  function getStyle (element, property) {
-  	var prop, value;
-  
-  	// Special case for opacity
-  	if (property === 'opacity') {
-  		return parseOpacity(current(element, opacity));
-  	}
-  
-  	// Retrieve longhand and prefixed version
-  	prop = getPrefixed(getShorthand(property));
-  	value = current(element, prop);
-  
-  	// Special case for transform
-  	if (transform[property]) {
-  		return parseTransform(value, property);
-  	}
-  
-  	switch (value) {
-  		case '':
-  			return null;
-  		case 'auto':
-  			return 0;
-  		default:
-  			return value;
-  	}
-  }
-  
-  /**
-   * Retrieve the numeric value for 'property'
-   * @param {Element} element
-   * @param {String} property
-   * @returns {Number}
-   */
-  function getNumericStyle (element, property) {
-  	return parseNumber(getStyle(element, property), property);
-  }
-  
-  /**
-   * Retrieve the 'property' for matching 'selector' rule in all document stylesheets
-   * @param {String} selector
-   * @param {String} property
-   * @returns {String}
-   */
-  function getDocumentStyle (selector, property) {
-  	var styleSheets = document.styleSheets
-  		, sheet, rules, rule;
-  
-  	if (styleSheets) {
-  		for (var i = 0, n = styleSheets.length; i < n; i++) {
-  			sheet = styleSheets[i];
-  			if (rules = sheet.rules || sheet.cssRules) {
-  				for (var j = 0, m = rules.length; j < m; j++) {
-  					rule = rules[j];
-  					if (selector === rule.selectorText) {
-  						return rule.style.getPropertyValue(property);
-  					}
-  				}
-  			}
-  		}
-  	}
-  
-  	return '';
-  }
-  
-  /**
-   * Set the style for 'property'
-   * @param {Element} element
-   * @param {String|Object} property
-   * @param {Object} value
-   */
-  function setStyle (element, property, value) {
-  	var prop, matrix;
-  
-  	// Expand shorthands
-  	prop = expandShorthand(property, value);
-  	// Handle property hash returned from expandShorthand
-  	if (isObject(prop)) {
-  		for (var p in prop) {
-  			setStyle(element, p, prop[p]);
-  		}
-  		return;
-  	}
-  
-  	// Handle opacity
-  	if (prop === 'opacity') {
-  		prop = opacity;
-  		value = getOpacityValue(value);
-  	}
-  
-  	// Look up default numeric unit if none provided
-  	if (value !== 'auto'
-  		&& value !== 'inherit'
-  		&& numeric[prop]
-  		&& !RE_UNITS.test(value)) {
-  			value += numeric[prop];
-  	}
-  
-  	// Look up prefixed property
-  	prop = getPrefixed(prop);
-  
-  	// Handle special transform properties
-  	// TODO: bulk multiple transforms?
-  	if (transform[property]) {
-  		value = generateTransform(element, property, value);
-  	}
-  
-  	element.style[camelCase(prop)] = value;
-  }
-  
-  /**
-   * Remove the style for 'property'
-   * @param {Element} element
-   * @param {String} property
-   */
-  function clearStyle (element, property) {
-  	var style = element.getAttribute('style') || ''
-  		, re;
-  
-  	if (style) {
-  		property = getAll(property).join('[\\w-]*|') + '[\\w-]*';
-  
-  		re = new RegExp('(?:^|\\s)(?:' + property + '):\\s?[^;]+;', 'ig');
-  		element.setAttribute('style', style.replace(re, ''));
-  	}
-  }
-  
-  /**
-   * Retrieve current computed style
-   * @param {Element} element
-   * @param {String} property
-   * @returns {String}
-   */
-  function current (element, property) {
-  	var value;
-  
-  	if (win.getComputedStyle) {
-  		if (property) {
-  			value = win.getComputedStyle(element).getPropertyValue(property);
-  			// Try with camel casing
-  			if (value == null) win.getComputedStyle(element).getPropertyValue(camelCase(property));
-  			return value;
-  		} else {
-  			return win.getComputedStyle(element);
-  		}
-  	// IE
-  	} else {
-  		if (property) {
-  			value = element.currentStyle[property];
-  			// Try with camel casing
-  			if (value == null) element.currentStyle[camelCase(property)];
-  			return value;
-  		} else {
-  			return element.currentStyle;
-  		}
-  	}
-  }
-  
-  /**
-   * CamelCase 'str, removing '-'
-   * @param {String} str
-   * @returns {String}
-   */
-  function camelCase (str) {
-  	// IE requires vendor prefixed values to start with lowercase
-  	if (str.indexOf('-ms-') == 0) str = str.slice(1);
-  	return str.replace(/-([a-z]|[0-9])/ig, function(all, letter) {
-  		return (letter + '').toUpperCase();
-  	});
-  }
-  
-  /**
-   * Convert 'matrix' to Array
-   * @param {String|Array} matrix
-   * @returns {Array}
-   */
-  function matrixStringToArray (matrix) {
-  	if (isArray(matrix)) {
-  		return matrix;
-  	} else if (re = matrix.match(RE_MATRIX)) {
-  		// Convert string to array
-  		return re[1].split(', ')
-  			.map(function (item) {
-  				return parseFloat(item);
-  			});
-  	}
-  }
   
 });
 require.register('lodash.foreach', function(module, exports, require) {
@@ -4121,13 +2797,13 @@ require.register('primitives/TPrimitive', function(module, exports, require) {
 });
 require.register('primitives/sunPrimitive', function(module, exports, require) {
   var svg = require('utils/svg')  
-  	, style = require('style')  
+  	, colours = require('yr-colours')  
   	, Trait = require('trait')  
   	, TPrimitive = require('primitives/TPrimitive')  
     
-  	, RAY_COLOUR = style.getDocumentStyle('.sun-ray', 'fill') || '#e88d15'  
-  	, CENTER_COLOUR = style.getDocumentStyle('.sun-centre', 'fill') ||'#faba2f'  
-  	, HORIZON_COLOUR = style.getDocumentStyle('.sun-winter-horizon', 'fill') || '#4d4d4d'  
+  	, RAY_COLOUR = colours.SUN_RAY  
+  	, CENTER_COLOUR = colours.SUN_CENTRE  
+  	, HORIZON_COLOUR = colours.SUN_HORIZON  
     
   	, TSunPrimitive;  
     
@@ -4176,54 +2852,49 @@ require.register('primitives/sunPrimitive', function(module, exports, require) {
   			ctx.fill();  
   			ctx.closePath();  
     
-  			// Mask  
-  			ctx.beginPath()  
-  			ctx.moveTo(0,8);  
-  			ctx.lineTo(100,8);  
-  			ctx.lineTo(100,100);  
-  			ctx.lineTo(0,100);  
-  			ctx.lineTo(0,8);  
-  			ctx.closePath();  
-  			ctx.clip();  
-    
   			// Rays  
   			ctx.fillStyle = RAY_COLOUR;  
   			ctx.beginPath();  
+  			ctx.moveTo(23.6,19.8);  
+  			ctx.lineTo(13.600000000000001,36.8);  
+  			ctx.bezierCurveTo(12.600000000000001,38.599999999999994,14.600000000000001,40.599999999999994,16.3,39.5);  
+  			ctx.lineTo(33.3,29.5);  
+  			ctx.bezierCurveTo(29.2,27.3,25.8,23.9,23.6,19.8);  
+  			ctx.moveTo(66.6,19.8);  
+  			ctx.bezierCurveTo(64.39999999999999,23.9,60.99999999999999,27.3,56.89999999999999,29.5);  
+  			ctx.lineTo(73.89999999999999,39.5);  
+  			ctx.bezierCurveTo(75.69999999999999,40.5,77.69999999999999,38.5,76.6,36.8);  
+  			ctx.lineTo(66.6,19.8);  
   			ctx.moveTo(45.1,32.6);  
   			ctx.bezierCurveTo(42.7,32.6,40.4,32.300000000000004,38.2,31.6);  
   			ctx.lineTo(43.2,50.7);  
   			ctx.bezierCurveTo(43.7,52.7,46.5,52.7,47.1,50.7);  
   			ctx.lineTo(52.1,31.6);  
   			ctx.bezierCurveTo(49.8,32.2,47.5,32.6,45.1,32.6);  
-  			ctx.moveTo(66.6,19.8);  
-  			ctx.bezierCurveTo(64.39999999999999,23.9,60.99999999999999,27.3,56.89999999999999,29.5);  
-  			ctx.lineTo(73.89999999999999,39.5);  
-  			ctx.bezierCurveTo(75.69999999999999,40.5,77.69999999999999,38.5,76.6,36.8);  
-  			ctx.lineTo(66.6,19.8);  
-  			ctx.moveTo(23.6,19.8);  
-  			ctx.lineTo(13.600000000000001,36.8);  
-  			ctx.bezierCurveTo(12.600000000000001,38.599999999999994,14.600000000000001,40.599999999999994,16.3,39.5);  
-  			ctx.lineTo(33.3,29.5);  
-  			ctx.bezierCurveTo(29.2,27.3,25.8,23.9,23.6,19.8);  
-  			ctx.moveTo(20.6,8.1);  
-  			ctx.bezierCurveTo(20.6,5.699999999999999,20.900000000000002,3.3999999999999995,21.6,1.1999999999999993);  
-  			ctx.lineTo(2.5,6.199999999999999);  
-  			ctx.bezierCurveTo(0.5,6.699999999999999,0.5,9.5,2.5,10.1);  
-  			ctx.lineTo(21.6,15.1);  
-  			ctx.bezierCurveTo(20.9,12.8,20.6,10.5,20.6,8.1);  
-  			ctx.moveTo(87.6,6.1);  
-  			ctx.lineTo(68.5,1.0999999999999996);  
-  			ctx.bezierCurveTo(69.1,3.3,69.5,5.6,69.5,8);  
-  			ctx.bezierCurveTo(69.5,10.4,69.2,12.7,68.5,14.9);  
-  			ctx.lineTo(87.6,9.9);  
-  			ctx.bezierCurveTo(89.6,9.5,89.6,6.7,87.6,6.1);  
+  			ctx.moveTo(69.6,8);  
+  			ctx.bezierCurveTo(69.6,8,69.6,8,69.6,8);  
+  			ctx.bezierCurveTo(69.6,10.5,69.3,12.8,68.6,15);  
+  			ctx.lineTo(87.69999999999999,10);  
+  			ctx.bezierCurveTo(88.69999999999999,9.7,89.19999999999999,8.9,89.19999999999999,8);  
+  			ctx.lineTo(69.6,8);  
+  			ctx.moveTo(20.6,8);  
+  			ctx.lineTo(1,8);  
+  			ctx.bezierCurveTo(1,8.9,1.5,9.7,2.5,10);  
+  			ctx.lineTo(21.6,15);  
+  			ctx.bezierCurveTo(20.9,12.8,20.6,10.5,20.6,8);  
+  			ctx.bezierCurveTo(20.6,8,20.6,8,20.6,8);  
   			ctx.closePath();  
   			ctx.fill();  
     
   			// Center fill  
   			ctx.fillStyle = CENTER_COLOUR;  
   			ctx.beginPath();  
-  			ctx.arc(45,8,20.5,0,this.TWO_PI,true);  
+  			ctx.moveTo(24.6,8);  
+  			ctx.bezierCurveTo(24.6,8,24.6,8,24.6,8);  
+  			ctx.bezierCurveTo(24.6,19.4,33.8,28.6,45.1,28.6);  
+  			ctx.bezierCurveTo(56.400000000000006,28.6,65.6,19.400000000000002,65.6,8.100000000000001);  
+  			ctx.bezierCurveTo(65.6,8.100000000000001,65.6,8.100000000000001,65.6,8.000000000000002);  
+  			ctx.lineTo(24.6,8.000000000000002);  
   			ctx.closePath();  
   			ctx.fill();  
     
@@ -4292,16 +2963,14 @@ require.register('primitives/sunPrimitive', function(module, exports, require) {
   module.exports = Trait.compose(  
   	TPrimitive,  
   	TSunPrimitive  
-  ).create();  
-  
+  ).create();
 });
 require.register('primitives/moonPrimitive', function(module, exports, require) {
   var svg = require('utils/svg')  
-  	, style = require('style')  
   	, Trait = require('trait')  
   	, TPrimitive = require('primitives/TPrimitive')  
     
-  	, FILL_COLOUR = style.getDocumentStyle('.moon', 'fill') || '#afc1c9'  
+  	, FILL_COLOUR = require('yr-colours').MOON  
     
   	, TMoonPrimitive;  
     
@@ -4441,11 +3110,10 @@ require.register('primitives/cloudPrimitive', function(module, exports, require)
 });
 require.register('primitives/raindropPrimitive', function(module, exports, require) {
   var svg = require('utils/svg')  
-  	, style = require('style')  
   	, Trait = require('trait')  
   	, TPrimitive = require('primitives/TPrimitive')  
     
-  	, FILL_COLOUR = style.getDocumentStyle('.raindrop', 'fill') || '#1671CC'  
+  	, FILL_COLOUR = require('yr-colours').RAIN  
     
   	, TRaindropPrimitive;  
     
@@ -4507,11 +3175,10 @@ require.register('primitives/raindropPrimitive', function(module, exports, requi
 });
 require.register('primitives/sleetPrimitive', function(module, exports, require) {
   var svg = require('utils/svg')
-  	, style = require('style')
   	, Trait = require('trait')
   	, TPrimitive = require('primitives/TPrimitive')
   
-  	, FILL_COLOUR = style.getDocumentStyle('.sleet', 'fill') || '#1EB9D8'
+  	, FILL_COLOUR = require('yr-colours').SLEET
   
   	, TSleetPrimitive;
   
@@ -4576,11 +3243,10 @@ require.register('primitives/sleetPrimitive', function(module, exports, require)
 });
 require.register('primitives/snowflakePrimitive', function(module, exports, require) {
   var svg = require('utils/svg')  
-  	, style = require('style')  
   	, Trait = require('trait')  
   	, TPrimitive = require('primitives/TPrimitive')  
     
-  	, FILL_COLOUR = style.getDocumentStyle('.snowflake', 'fill') || '#54BFE3'  
+  	, FILL_COLOUR = require('yr-colours').SNOW  
     
   	, TSnowflakePrimitive;  
     
@@ -4765,11 +3431,10 @@ require.register('primitives/fogPrimitive', function(module, exports, require) {
 });
 require.register('primitives/lightningPrimitive', function(module, exports, require) {
   var svg = require('utils/svg')  
-  	, style = require('style')  
   	, Trait = require('trait')  
   	, TPrimitive = require('primitives/TPrimitive')  
     
-  	, FILL_COLOUR = style.getDocumentStyle('.lightning', 'fill') || '#c9af16'  
+  	, FILL_COLOUR = require('yr-colours').LIGHTNING  
     
   	, TLightningPrimitive;  
     
@@ -4843,7 +3508,7 @@ require.register('weatherSymbol', function(module, exports, require) {
   	, SVG = 'svg'
   	, CANVAS = 'canvas'
   	, IMG = 'img'
-  	, DEFS = '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" id="symbolDefs" x="0px" y="0px" width="0" height="0" viewBox="0 0 100 100" style="display:none;"><defs><path id="cloud" class="cloud" d="M55.6,2C46,1.7,37.1,7,34.1,17.3c-6.1-1.5-16,2.4-17.8,10.9C10.1,28,2,33.1,2,41.6C2,51,9,56,21.5,56h43.6 c5.6,0,12.9-0.5,17.3-2.6c14.9-7.2,12.3-32.3-6.4-34.6C73.7,7.9,65.1,2.3,55.6,2z"/><clipPath id="sunWinterMask"><rect y="45" width="90" height="45" /></clipPath></defs><symbol id="sun"><g class="sun-ray" ><path d="M23.5,33.2c2.2-4.1,5.6-7.5,9.7-9.7l-17-10c-1.8-1-3.8,1-2.7,2.7L23.5,33.2z"/><path d="M45,20.5c2.4,0,4.7,0.3,6.9,1l-5-19.1c-0.5-2-3.3-2-3.9,0l-5,19.1C40.3,20.8,42.6,20.5,45,20.5z"/><path d="M87.6,43.1l-19.1-5c0.6,2.2,1,4.5,1,6.9c0,2.4-0.3,4.7-1,6.9l19.1-5C89.6,46.4,89.6,43.6,87.6,43.1z"/><path d="M20.5,45c0-2.4,0.3-4.7,1-6.9l-19.1,5c-2,0.5-2,3.3,0,3.9l19.1,5C20.8,49.7,20.5,47.4,20.5,45z"/><path d="M66.5,33.2l10-17c1-1.8-1-3.8-2.7-2.7l-17,10C60.9,25.8,64.2,29.1,66.5,33.2z"/><path d="M23.5,56.8l-10,17c-1,1.8,1,3.8,2.7,2.7l17-10C29.1,64.2,25.8,60.9,23.5,56.8z"/><path d="M66.5,56.8c-2.2,4.1-5.6,7.5-9.7,9.7l17,10c1.8,1,3.8-1,2.7-2.7L66.5,56.8z"/><path d="M45,69.5c-2.4,0-4.7-0.3-6.9-1l5,19.1c0.5,2,3.3,2,3.9,0l5-19.1C49.7,69.2,47.4,69.5,45,69.5z"/></g><circle class="sun-centre" style="fill-rule:nonzero" cx="45" cy="45" r="20.5"/></symbol><symbol id="sunWinter"><path class="sun-winter-horizon" d="M2.5,0h85.1C88.9,0,90,0.9,90,2v0c0,1.1-1.1,2-2.5,2H2.5C1.1,4,0,3.1,0,2v0C0,0.9,1.1,0,2.5,0z"/><use class="sun-winter" style="clip-path:url(#sunWinterMask);" xlink:href="#sun" x="0" y="-37" width="100" height="100"></use></symbol><symbol id="moon"><path class="moon" d="M23,20c0-7.7,2.9-14.7,7.6-20c-0.2,0-0.4,0-0.6,0C13.4,0,0,13.4,0,30s13.4,30,30,30c8.9,0,16.9-3.9,22.4-10 C36.1,49.6,23,36.4,23,20z"/></symbol><symbol id="cloud-10" class="cloud-10"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-15" class="cloud-15"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-30" class="cloud-30"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-40" class="cloud-40"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-50" class="cloud-50"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="fog"><path class="fog" d="M82.3,42H2.7C1.2,42,0,42.9,0,44s1.2,2,2.7,2h79.7c1.5,0,2.7-0.9,2.7-2S83.8,42,82.3,42z"/><path class="fog" d="M80.1,50H5.9C4.3,50,3,50.9,3,52c0,1.1,1.3,2,2.9,2h74.3c1.6,0,2.9-0.9,2.9-2C83,50.9,81.7,50,80.1,50z"/><path class="fog" d="M80.1,58H10.9C9.3,58,8,58.9,8,60s1.3,2,2.9,2h69.2c1.6,0,2.9-0.9,2.9-2S81.7,58,80.1,58z"/><path class="fog" d="M51.2,0c-9.1-0.3-17.6,4.8-20.5,14.6c-5.9-1.4-15.3,2.3-17,10.4C8.2,24.9,1.2,29,0.1,36C0,37,0.7,37.9,1.7,37.9l82.3,0 c1,0,1.8-0.7,1.9-1.7c1-8.9-4.1-18.7-15.2-20.1C68.5,5.6,60.2,0.3,51.2,0z"/></symbol><symbol id="raindrop"><circle class="bg" cx="9" cy="9" r="9"/><path class="raindrop" d="M20,16.8c0,3.4-2.7,6.2-6,6.2c-3.3,0-6-2.8-6-6.2C8,14.9,8,6,8,6C13.5,11.5,20,11.2,20,16.8z"/></symbol><symbol id="sleet"><circle class="bg" cx="9" cy="9" r="9"/><path class="sleet" d="M19.9,16.6c-1.8,2.3-3.4,5.5-3.9,8.9c-0.1,0.5-0.6,0.7-1,0.4c-2.3-2.1-4.8-3.3-8.5-3.8c-0.4-0.1-0.6-0.5-0.4-0.8 C8.4,17,8.6,10.1,7.8,5c2.7,4.2,7.1,9,11.8,10.7C20,15.8,20.1,16.3,19.9,16.6z"/></symbol><symbol id="snowflake"><circle class="bg" cx="9" cy="9" r="9"/><path class="snowflake" d="M6.2,6.9l1.1,3.8c-0.3,0.2-0.6,0.5-0.9,0.8C6,11.7,5.8,12,5.6,12.4l-3.8-1C1,11.2,0.2,11.7,0,12.5c-0.2,0.8,0.3,1.6,1.1,1.8 l3.8,1c0,0.8,0.3,1.6,0.6,2.3l-2.7,2.8c-0.6,0.6-0.6,1.5,0,2.1c0.6,0.6,1.5,0.6,2.1,0l2.7-2.8c0.7,0.4,1.5,0.6,2.3,0.6l1,3.8 c0.2,0.8,1,1.2,1.8,1c0.8-0.2,1.2-1,1-1.8l-1.1-3.8c0.3-0.2,0.7-0.4,1-0.7c0.3-0.3,0.5-0.6,0.7-1l3.8,1c0.8,0.2,1.6-0.3,1.8-1.1 c0.2-0.8-0.3-1.6-1.1-1.8l-3.8-1c0-0.8-0.3-1.6-0.7-2.3l2.7-2.8c0.6-0.6,0.5-1.5,0-2.1c-0.6-0.6-1.5-0.6-2.1,0l-2.7,2.8 c-0.7-0.4-1.5-0.6-2.3-0.6L9,6.1c-0.2-0.8-1-1.2-1.8-1C6.5,5.3,6,6.1,6.2,6.9z M11.8,13.2c1,1,1,2.6,0,3.6c-1,1-2.6,1-3.6,0 c-1-1-1-2.6,0-3.6C9.2,12.2,10.8,12.2,11.8,13.2z"/></symbol><symbol id="lightning"><path class="lightning" d="M10.4,0L4.2,12.5h8.3L0,25L25,8.3h-8.3L25,0H10.4z"/></symbol></svg>';
+  	, DEFS = '<svg id="symbolDefs" x="0px" y="0px" width="0" height="0" viewBox="0 0 100 100" style="display:none;"><defs><path id="cloud" class="cloud" d="M55.6,2C46,1.7,37.1,7,34.1,17.3c-6.1-1.5-16,2.4-17.8,10.9C10.1,28,2,33.1,2,41.6C2,51,9,56,21.5,56h43.6 c5.6,0,12.9-0.5,17.3-2.6c14.9-7.2,12.3-32.3-6.4-34.6C73.7,7.9,65.1,2.3,55.6,2z"/></defs><symbol id="sun"><g class="sun-ray" ><path d="M23.5,33.2c2.2-4.1,5.6-7.5,9.7-9.7l-17-10c-1.8-1-3.8,1-2.7,2.7L23.5,33.2z"/><path d="M45,20.5c2.4,0,4.7,0.3,6.9,1l-5-19.1c-0.5-2-3.3-2-3.9,0l-5,19.1C40.3,20.8,42.6,20.5,45,20.5z"/><path d="M87.6,43.1l-19.1-5c0.6,2.2,1,4.5,1,6.9c0,2.4-0.3,4.7-1,6.9l19.1-5C89.6,46.4,89.6,43.6,87.6,43.1z"/><path d="M20.5,45c0-2.4,0.3-4.7,1-6.9l-19.1,5c-2,0.5-2,3.3,0,3.9l19.1,5C20.8,49.7,20.5,47.4,20.5,45z"/><path d="M66.5,33.2l10-17c1-1.8-1-3.8-2.7-2.7l-17,10C60.9,25.8,64.2,29.1,66.5,33.2z"/><path d="M23.5,56.8l-10,17c-1,1.8,1,3.8,2.7,2.7l17-10C29.1,64.2,25.8,60.9,23.5,56.8z"/><path d="M66.5,56.8c-2.2,4.1-5.6,7.5-9.7,9.7l17,10c1.8,1,3.8-1,2.7-2.7L66.5,56.8z"/><path d="M45,69.5c-2.4,0-4.7-0.3-6.9-1l5,19.1c0.5,2,3.3,2,3.9,0l5-19.1C49.7,69.2,47.4,69.5,45,69.5z"/></g><circle class="sun-centre" style="fill-rule:nonzero" cx="45" cy="45" r="20.5"/></symbol><symbol id="sunWinter"><path class="sun-winter-horizon" d="M2.5,0h85.1C88.9,0,90,0.9,90,2v0c0,1.1-1.1,2-2.5,2H2.5C1.1,4,0,3.1,0,2v0C0,0.9,1.1,0,2.5,0z"/><g class="sun-ray"><path d="M23.6,19.8l-10,17c-1,1.8,1,3.8,2.7,2.7l17-10C29.2,27.3,25.8,23.9,23.6,19.8z"/><path d="M66.6,19.8c-2.2,4.1-5.6,7.5-9.7,9.7l17,10c1.8,1,3.8-1,2.7-2.7L66.6,19.8z"/><path d="M45.1,32.6c-2.4,0-4.7-0.3-6.9-1l5,19.1c0.5,2,3.3,2,3.9,0l5-19.1C49.8,32.2,47.5,32.6,45.1,32.6z"/><path d="M69.6,8C69.6,8,69.6,8,69.6,8c0,2.5-0.3,4.8-1,7l19.1-5c1-0.3,1.5-1.1,1.5-2H69.6z"/><path d="M20.6,8H1c0,0.9,0.5,1.7,1.5,2l19.1,5C20.9,12.8,20.6,10.5,20.6,8C20.6,8,20.6,8,20.6,8z"/></g><path class="sun-centre" d="M24.6,8C24.6,8,24.6,8,24.6,8c0,11.4,9.2,20.6,20.5,20.6c11.3,0,20.5-9.2,20.5-20.5c0,0,0,0,0-0.1H24.6z"/></symbol><symbol id="moon"><path class="moon" d="M23,20c0-7.7,2.9-14.7,7.6-20c-0.2,0-0.4,0-0.6,0C13.4,0,0,13.4,0,30s13.4,30,30,30c8.9,0,16.9-3.9,22.4-10 C36.1,49.6,23,36.4,23,20z"/></symbol><symbol id="cloud-10" class="cloud-10"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-15" class="cloud-15"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-30" class="cloud-30"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-40" class="cloud-40"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="cloud-50" class="cloud-50"><use xlink:href="#cloud" x="0" y="0" width="100" height="100"></use></symbol><symbol id="fog"><path class="fog" d="M82.3,42H2.7C1.2,42,0,42.9,0,44s1.2,2,2.7,2h79.7c1.5,0,2.7-0.9,2.7-2S83.8,42,82.3,42z"/><path class="fog" d="M80.1,50H5.9C4.3,50,3,50.9,3,52c0,1.1,1.3,2,2.9,2h74.3c1.6,0,2.9-0.9,2.9-2C83,50.9,81.7,50,80.1,50z"/><path class="fog" d="M80.1,58H10.9C9.3,58,8,58.9,8,60s1.3,2,2.9,2h69.2c1.6,0,2.9-0.9,2.9-2S81.7,58,80.1,58z"/><path class="fog" d="M51.2,0c-9.1-0.3-17.6,4.8-20.5,14.6c-5.9-1.4-15.3,2.3-17,10.4C8.2,24.9,1.2,29,0.1,36C0,37,0.7,37.9,1.7,37.9l82.3,0 c1,0,1.8-0.7,1.9-1.7c1-8.9-4.1-18.7-15.2-20.1C68.5,5.6,60.2,0.3,51.2,0z"/></symbol><symbol id="raindrop"><circle class="bg" cx="9" cy="9" r="9"/><path class="raindrop" d="M20,16.8c0,3.4-2.7,6.2-6,6.2c-3.3,0-6-2.8-6-6.2C8,14.9,8,6,8,6C13.5,11.5,20,11.2,20,16.8z"/></symbol><symbol id="sleet"><circle class="bg" cx="9" cy="9" r="9"/><path class="sleet" d="M19.9,16.6c-1.8,2.3-3.4,5.5-3.9,8.9c-0.1,0.5-0.6,0.7-1,0.4c-2.3-2.1-4.8-3.3-8.5-3.8c-0.4-0.1-0.6-0.5-0.4-0.8 C8.4,17,8.6,10.1,7.8,5c2.7,4.2,7.1,9,11.8,10.7C20,15.8,20.1,16.3,19.9,16.6z"/></symbol><symbol id="snowflake"><circle class="bg" cx="9" cy="9" r="9"/><path class="snowflake" d="M6.2,6.9l1.1,3.8c-0.3,0.2-0.6,0.5-0.9,0.8C6,11.7,5.8,12,5.6,12.4l-3.8-1C1,11.2,0.2,11.7,0,12.5c-0.2,0.8,0.3,1.6,1.1,1.8 l3.8,1c0,0.8,0.3,1.6,0.6,2.3l-2.7,2.8c-0.6,0.6-0.6,1.5,0,2.1c0.6,0.6,1.5,0.6,2.1,0l2.7-2.8c0.7,0.4,1.5,0.6,2.3,0.6l1,3.8 c0.2,0.8,1,1.2,1.8,1c0.8-0.2,1.2-1,1-1.8l-1.1-3.8c0.3-0.2,0.7-0.4,1-0.7c0.3-0.3,0.5-0.6,0.7-1l3.8,1c0.8,0.2,1.6-0.3,1.8-1.1 c0.2-0.8-0.3-1.6-1.1-1.8l-3.8-1c0-0.8-0.3-1.6-0.7-2.3l2.7-2.8c0.6-0.6,0.5-1.5,0-2.1c-0.6-0.6-1.5-0.6-2.1,0l-2.7,2.8 c-0.7-0.4-1.5-0.6-2.3-0.6L9,6.1c-0.2-0.8-1-1.2-1.8-1C6.5,5.3,6,6.1,6.2,6.9z M11.8,13.2c1,1,1,2.6,0,3.6c-1,1-2.6,1-3.6,0 c-1-1-1-2.6,0-3.6C9.2,12.2,10.8,12.2,11.8,13.2z"/></symbol><symbol id="lightning"><path class="lightning" d="M10.4,0L4.2,12.5h8.3L0,25L25,8.3h-8.3L25,0H10.4z"/></symbol></svg>';
   
   // Add svg definitions if not already present
   if (capabilities.hasSVG && !document.getElementById('symbolDefs')) {
@@ -4877,8 +3542,8 @@ require.register('weatherSymbol', function(module, exports, require) {
   	// and element matches type and 'replace' not set
   	if (!id
   		|| !options.replace
-  			&& container.firstChild
-  			&& container.firstChild.nodeName.toLowerCase() == type) {
+  			&& container.children.length
+  			&& container.children[0].nodeName.toLowerCase() == type) {
   				return;
   	// Clear
   	} else {
@@ -4903,9 +3568,8 @@ require.register('weatherSymbol', function(module, exports, require) {
   					x: Math.round(layer.x * tScale),
   					y: Math.round(layer.y * tScale),
   					scale: (layer.scale || 1) * tScale,
-  					small: layer.small,
   					flip: layer.flip,
-  					tint: layer.tint,
+  					tint: layer.tint || 1,
   					winter: layer.winter,
   					width: w * scale,
   					height: h * scale,
@@ -5013,6 +3677,486 @@ require.register('lodash._baseindexof', function(module, exports, require) {
   }
   
   module.exports = baseIndexOf;
+  
+});
+require.register('lodash.forin', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  var baseCreateCallback = require('lodash._basecreatecallback'),
+      objectTypes = require('lodash._objecttypes');
+  
+  /**
+   * Iterates over own and inherited enumerable properties of an object,
+   * executing the callback for each property. The callback is bound to `thisArg`
+   * and invoked with three arguments; (value, key, object). Callbacks may exit
+   * iteration early by explicitly returning `false`.
+   *
+   * @static
+   * @memberOf _
+   * @type Function
+   * @category Objects
+   * @param {Object} object The object to iterate over.
+   * @param {Function} [callback=identity] The function called per iteration.
+   * @param {*} [thisArg] The `this` binding of `callback`.
+   * @returns {Object} Returns `object`.
+   * @example
+   *
+   * function Shape() {
+   *   this.x = 0;
+   *   this.y = 0;
+   * }
+   *
+   * Shape.prototype.move = function(x, y) {
+   *   this.x += x;
+   *   this.y += y;
+   * };
+   *
+   * _.forIn(new Shape, function(value, key) {
+   *   console.log(key);
+   * });
+   * // => logs 'x', 'y', and 'move' (property order is not guaranteed across environments)
+   */
+  var forIn = function(collection, callback, thisArg) {
+    var index, iterable = collection, result = iterable;
+    if (!iterable) return result;
+    if (!objectTypes[typeof iterable]) return result;
+    callback = callback && typeof thisArg == 'undefined' ? callback : baseCreateCallback(callback, thisArg, 3);
+      for (index in iterable) {
+        if (callback(iterable[index], index, collection) === false) return result;
+      }
+    return result
+  };
+  
+  module.exports = forIn;
+  
+});
+require.register('lodash._arraypool', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  
+  /** Used to pool arrays and objects used internally */
+  var arrayPool = [];
+  
+  module.exports = arrayPool;
+  
+});
+require.register('lodash._getarray', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  var arrayPool = require('lodash._arraypool');
+  
+  /**
+   * Gets an array from the array pool or creates a new one if the pool is empty.
+   *
+   * @private
+   * @returns {Array} The array from the pool.
+   */
+  function getArray() {
+    return arrayPool.pop() || [];
+  }
+  
+  module.exports = getArray;
+  
+});
+require.register('lodash._maxpoolsize', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  
+  /** Used as the max size of the `arrayPool` and `objectPool` */
+  var maxPoolSize = 40;
+  
+  module.exports = maxPoolSize;
+  
+});
+require.register('lodash._releasearray', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  var arrayPool = require('lodash._arraypool'),
+      maxPoolSize = require('lodash._maxpoolsize');
+  
+  /**
+   * Releases the given array back to the array pool.
+   *
+   * @private
+   * @param {Array} [array] The array to release.
+   */
+  function releaseArray(array) {
+    array.length = 0;
+    if (arrayPool.length < maxPoolSize) {
+      arrayPool.push(array);
+    }
+  }
+  
+  module.exports = releaseArray;
+  
+});
+require.register('lodash._baseisequal', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  var forIn = require('lodash.forin'),
+      getArray = require('lodash._getarray'),
+      isFunction = require('lodash.isfunction'),
+      objectTypes = require('lodash._objecttypes'),
+      releaseArray = require('lodash._releasearray');
+  
+  /** `Object#toString` result shortcuts */
+  var argsClass = '[object Arguments]',
+      arrayClass = '[object Array]',
+      boolClass = '[object Boolean]',
+      dateClass = '[object Date]',
+      numberClass = '[object Number]',
+      objectClass = '[object Object]',
+      regexpClass = '[object RegExp]',
+      stringClass = '[object String]';
+  
+  /** Used for native method references */
+  var objectProto = Object.prototype;
+  
+  /** Used to resolve the internal [[Class]] of values */
+  var toString = objectProto.toString;
+  
+  /** Native method shortcuts */
+  var hasOwnProperty = objectProto.hasOwnProperty;
+  
+  /**
+   * The base implementation of `_.isEqual`, without support for `thisArg` binding,
+   * that allows partial "_.where" style comparisons.
+   *
+   * @private
+   * @param {*} a The value to compare.
+   * @param {*} b The other value to compare.
+   * @param {Function} [callback] The function to customize comparing values.
+   * @param {Function} [isWhere=false] A flag to indicate performing partial comparisons.
+   * @param {Array} [stackA=[]] Tracks traversed `a` objects.
+   * @param {Array} [stackB=[]] Tracks traversed `b` objects.
+   * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
+   */
+  function baseIsEqual(a, b, callback, isWhere, stackA, stackB) {
+    // used to indicate that when comparing objects, `a` has at least the properties of `b`
+    if (callback) {
+      var result = callback(a, b);
+      if (typeof result != 'undefined') {
+        return !!result;
+      }
+    }
+    // exit early for identical values
+    if (a === b) {
+      // treat `+0` vs. `-0` as not equal
+      return a !== 0 || (1 / a == 1 / b);
+    }
+    var type = typeof a,
+        otherType = typeof b;
+  
+    // exit early for unlike primitive values
+    if (a === a &&
+        !(a && objectTypes[type]) &&
+        !(b && objectTypes[otherType])) {
+      return false;
+    }
+    // exit early for `null` and `undefined` avoiding ES3's Function#call behavior
+    // http://es5.github.io/#x15.3.4.4
+    if (a == null || b == null) {
+      return a === b;
+    }
+    // compare [[Class]] names
+    var className = toString.call(a),
+        otherClass = toString.call(b);
+  
+    if (className == argsClass) {
+      className = objectClass;
+    }
+    if (otherClass == argsClass) {
+      otherClass = objectClass;
+    }
+    if (className != otherClass) {
+      return false;
+    }
+    switch (className) {
+      case boolClass:
+      case dateClass:
+        // coerce dates and booleans to numbers, dates to milliseconds and booleans
+        // to `1` or `0` treating invalid dates coerced to `NaN` as not equal
+        return +a == +b;
+  
+      case numberClass:
+        // treat `NaN` vs. `NaN` as equal
+        return (a != +a)
+          ? b != +b
+          // but treat `+0` vs. `-0` as not equal
+          : (a == 0 ? (1 / a == 1 / b) : a == +b);
+  
+      case regexpClass:
+      case stringClass:
+        // coerce regexes to strings (http://es5.github.io/#x15.10.6.4)
+        // treat string primitives and their corresponding object instances as equal
+        return a == String(b);
+    }
+    var isArr = className == arrayClass;
+    if (!isArr) {
+      // unwrap any `lodash` wrapped values
+      var aWrapped = hasOwnProperty.call(a, '__wrapped__'),
+          bWrapped = hasOwnProperty.call(b, '__wrapped__');
+  
+      if (aWrapped || bWrapped) {
+        return baseIsEqual(aWrapped ? a.__wrapped__ : a, bWrapped ? b.__wrapped__ : b, callback, isWhere, stackA, stackB);
+      }
+      // exit for functions and DOM nodes
+      if (className != objectClass) {
+        return false;
+      }
+      // in older versions of Opera, `arguments` objects have `Array` constructors
+      var ctorA = a.constructor,
+          ctorB = b.constructor;
+  
+      // non `Object` object instances with different constructors are not equal
+      if (ctorA != ctorB &&
+            !(isFunction(ctorA) && ctorA instanceof ctorA && isFunction(ctorB) && ctorB instanceof ctorB) &&
+            ('constructor' in a && 'constructor' in b)
+          ) {
+        return false;
+      }
+    }
+    // assume cyclic structures are equal
+    // the algorithm for detecting cyclic structures is adapted from ES 5.1
+    // section 15.12.3, abstract operation `JO` (http://es5.github.io/#x15.12.3)
+    var initedStack = !stackA;
+    stackA || (stackA = getArray());
+    stackB || (stackB = getArray());
+  
+    var length = stackA.length;
+    while (length--) {
+      if (stackA[length] == a) {
+        return stackB[length] == b;
+      }
+    }
+    var size = 0;
+    result = true;
+  
+    // add `a` and `b` to the stack of traversed objects
+    stackA.push(a);
+    stackB.push(b);
+  
+    // recursively compare objects and arrays (susceptible to call stack limits)
+    if (isArr) {
+      // compare lengths to determine if a deep comparison is necessary
+      length = a.length;
+      size = b.length;
+      result = size == length;
+  
+      if (result || isWhere) {
+        // deep compare the contents, ignoring non-numeric properties
+        while (size--) {
+          var index = length,
+              value = b[size];
+  
+          if (isWhere) {
+            while (index--) {
+              if ((result = baseIsEqual(a[index], value, callback, isWhere, stackA, stackB))) {
+                break;
+              }
+            }
+          } else if (!(result = baseIsEqual(a[size], value, callback, isWhere, stackA, stackB))) {
+            break;
+          }
+        }
+      }
+    }
+    else {
+      // deep compare objects using `forIn`, instead of `forOwn`, to avoid `Object.keys`
+      // which, in this case, is more costly
+      forIn(b, function(value, key, b) {
+        if (hasOwnProperty.call(b, key)) {
+          // count the number of properties.
+          size++;
+          // deep compare each property value.
+          return (result = hasOwnProperty.call(a, key) && baseIsEqual(a[key], value, callback, isWhere, stackA, stackB));
+        }
+      });
+  
+      if (result && !isWhere) {
+        // ensure both objects have the same number of properties
+        forIn(a, function(value, key, a) {
+          if (hasOwnProperty.call(a, key)) {
+            // `size` will be `-1` if `a` has more properties than `b`
+            return (result = --size > -1);
+          }
+        });
+      }
+    }
+    stackA.pop();
+    stackB.pop();
+  
+    if (initedStack) {
+      releaseArray(stackA);
+      releaseArray(stackB);
+    }
+    return result;
+  }
+  
+  module.exports = baseIsEqual;
+  
+});
+require.register('lodash.property', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  
+  /**
+   * Creates a "_.pluck" style function, which returns the `key` value of a
+   * given object.
+   *
+   * @static
+   * @memberOf _
+   * @category Utilities
+   * @param {string} key The name of the property to retrieve.
+   * @returns {Function} Returns the new function.
+   * @example
+   *
+   * var characters = [
+   *   { 'name': 'fred',   'age': 40 },
+   *   { 'name': 'barney', 'age': 36 }
+   * ];
+   *
+   * var getName = _.property('name');
+   *
+   * _.map(characters, getName);
+   * // => ['barney', 'fred']
+   *
+   * _.sortBy(characters, getName);
+   * // => [{ 'name': 'barney', 'age': 36 }, { 'name': 'fred',   'age': 40 }]
+   */
+  function property(key) {
+    return function(object) {
+      return object[key];
+    };
+  }
+  
+  module.exports = property;
+  
+});
+require.register('lodash.createcallback', function(module, exports, require) {
+  /**
+   * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
+   * Build: `lodash modularize modern exports="npm" -o ./npm/`
+   * Copyright 2012-2013 The Dojo Foundation <http://dojofoundation.org/>
+   * Based on Underscore.js 1.5.2 <http://underscorejs.org/LICENSE>
+   * Copyright 2009-2013 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+   * Available under MIT license <http://lodash.com/license>
+   */
+  var baseCreateCallback = require('lodash._basecreatecallback'),
+      baseIsEqual = require('lodash._baseisequal'),
+      isObject = require('lodash.isobject'),
+      keys = require('lodash.keys'),
+      property = require('lodash.property');
+  
+  /**
+   * Produces a callback bound to an optional `thisArg`. If `func` is a property
+   * name the created callback will return the property value for a given element.
+   * If `func` is an object the created callback will return `true` for elements
+   * that contain the equivalent object properties, otherwise it will return `false`.
+   *
+   * @static
+   * @memberOf _
+   * @category Utilities
+   * @param {*} [func=identity] The value to convert to a callback.
+   * @param {*} [thisArg] The `this` binding of the created callback.
+   * @param {number} [argCount] The number of arguments the callback accepts.
+   * @returns {Function} Returns a callback function.
+   * @example
+   *
+   * var characters = [
+   *   { 'name': 'barney', 'age': 36 },
+   *   { 'name': 'fred',   'age': 40 }
+   * ];
+   *
+   * // wrap to create custom callback shorthands
+   * _.createCallback = _.wrap(_.createCallback, function(func, callback, thisArg) {
+   *   var match = /^(.+?)__([gl]t)(.+)$/.exec(callback);
+   *   return !match ? func(callback, thisArg) : function(object) {
+   *     return match[2] == 'gt' ? object[match[1]] > match[3] : object[match[1]] < match[3];
+   *   };
+   * });
+   *
+   * _.filter(characters, 'age__gt38');
+   * // => [{ 'name': 'fred', 'age': 40 }]
+   */
+  function createCallback(func, thisArg, argCount) {
+    var type = typeof func;
+    if (func == null || type == 'function') {
+      return baseCreateCallback(func, thisArg, argCount);
+    }
+    // handle "_.pluck" style callback shorthands
+    if (type != 'object') {
+      return property(func);
+    }
+    var props = keys(func),
+        key = props[0],
+        a = func[key];
+  
+    // handle "_.where" style callback shorthands
+    if (props.length == 1 && a === a && !isObject(a)) {
+      // fast path the common case of providing an object with a single
+      // property containing a primitive value
+      return function(object) {
+        var b = object[key];
+        return a === b && (a !== 0 || (1 / a == 1 / b));
+      };
+    }
+    return function(object) {
+      var length = props.length,
+          result = false;
+  
+      while (length--) {
+        if (!(result = baseIsEqual(object[props[length]], func[props[length]], null, true))) {
+          break;
+        }
+      }
+      return result;
+    };
+  }
+  
+  module.exports = createCallback;
   
 });
 require.register('lodash.sortedindex', function(module, exports, require) {
