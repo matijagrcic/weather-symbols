@@ -1,77 +1,86 @@
 {
   "name": "yr-weather-symbols",
-  "version": "0.10.0",
+  "version": "0.15.1",
   "dependencies": {
-    "trait": "git://github.com/YR/trait",
-    "svg": "git://github.com/YR/svg",
-    "capabilities": "git://github.com/YR/capabilities",
-    "yr-colours": "git://github.com/YR/yr-colours"
+    "capabilities": "git+https://aa5f2bb713ef8a8323fc4a621fc2965d76c06698:x-oauth-basic@github.com/yr/capabilities.git#0.1.0",
+    "ease": "git+https://aa5f2bb713ef8a8323fc4a621fc2965d76c06698:x-oauth-basic@github.com/yr/ease.git#0.2.0",
+    "lodash-compat": "3.1.0",
+    "number-utils": "YR/number-utils#0.2.2",
+    "react": "0.12.2",
+    "runtime": "git+https://aa5f2bb713ef8a8323fc4a621fc2965d76c06698:x-oauth-basic@github.com/YR/runtime#0.1.0",
+    "svg": "git+https://aa5f2bb713ef8a8323fc4a621fc2965d76c06698:x-oauth-basic@github.com/yr/svg.git#1.0.0",
+    "trait": "YR/trait#1.1.1",
+    "yr-colours": "git+https://aa5f2bb713ef8a8323fc4a621fc2965d76c06698:x-oauth-basic@github.com/YR/yr-colours#1.1.0"
   },
   "devDependencies": {
-    "dustjs-linkedin": "^2.3.3",
-    "classlist": "git://github.com/YR/classlist",
-    "style": "git://github.com/YR/style",
-    "lodash.foreach": "^2.4.0",
-    "buddy": "^1.0.0",
-    "casperjs": "^1.1.0-beta3",
+    "buddy": "popeindustries/buddy",
+    "casperjs": "1.1.0-beta3",
+    "classlist": "git+ssh://git@github.com:yr/classlist.git#0.4.0",
+    "expect.js": "0.3.1",
     "mocha": "*",
-    "expect.js": "*",
-    "mocha-sauce": "git://github.com/pbakaus/mocha-sauce.git",
+    "mocha-sauce": "pbakaus/mocha-sauce",
+    "nunjucks": "popeindustries/nunjucks",
+    "requestAnimationFrame": "YR/requestAnimationFrame",
+    "should": "4.6.3",
+    "style": "git+ssh://git@github.com:yr/style.git#0.9.1",
     "term-canvas": "*"
   },
   "scripts": {
     "convert": "mkdir temp && casperjs src/convert.js temp && pngcrush -d dist/png temp/* && rm -Rf temp && cd dist && zip -r png.zip png ",
-    "test": "buddy build && mocha-phantomjs test/test-runner.html",
+    "test": "NODE_ENV=test mocha test/server-test.js --reporter spec --require should",
+    "test-client": "mocha-phantomjs test/test-runner.html",
     "sauce": "node test/sauce.js"
   },
-  "main": "src/js/weatherSymbol",
+  "main": "src/js/weatherSymbolComponent",
   "repository": "https://github.com/YR/yr-weather-symbols.git",
   "license": "MIT",
   "private": true,
   "buddy": {
     "build": {
       "js": {
-        "sources": ["src/js"],
+        "sources": ["src/js", "src/js-preview"],
         "targets": [
           {
-            "input": "src/js/index.js",
-            "output": "index.js",
+            "input": "src/js-preview/index.js",
+            "output": "./index.js",
             "boilerplate": true,
             "bootstrap": true,
             "alias": {
-              "dust": "./node_modules/dustjs-linkedin/dist/dust-core.js"
+              "nunjucks": "./node_modules/nunjucks/browser/nunjucks-slim.js"
             }
           },
           {
-            "input": "src/js/weatherSymbol.js",
-            "output": "test/weatherSymbol.js",
+            "input": "src/js/weatherSymbolElement.js",
+            "output": "test/weatherSymbolElement.js",
             "boilerplate": true,
             "bootstrap": true
           }
         ]
       },
       "css": {
-        "sources": ["src/css"],
         "targets": [
           {
             "input": "src/css",
-            "output": "."
+            "output": "./"
           }
         ]
       },
       "html": {
-        "sources": ["src/html"],
         "targets": [
           {
-            "input": "src/html/",
-            "output": "."
+            "input": "src/html/index.nunjs",
+            "output": "./"
+          },
+          {
+            "input": "src/html/weatherSymbolsDefs.nunjs",
+            "output": "./"
           }
         ]
       }
     },
     "settings": {
       "server": {
-        "directory": ".",
+        "directory": "./",
         "port": 8080
       }
     }

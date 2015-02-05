@@ -1,55 +1,115 @@
-var Trait = require('trait');
+var trait = require('trait')
+	, easeOut = require('ease/lib/quad').outQuad.js
+	, easeIn = require('ease/lib/quad').inOutQuad.js;
 
-module.exports = Trait({
+module.exports = trait({
+	renderSVG: trait.required,
+	renderCanvas: trait.required,
+
 	TWO_PI: Math.PI * 2,
-	STROKE_WIDTH: 4,
-	WIDTH: 100,
+	MAX_WIDTH: 100,
+	OFFSET: 10,
+
+	type: '',
+	primitive: '',
+	visible: false,
+	x: 0,
+	y: 0,
+	scale: 1,
+	tint: 1,
+	opacity: 1,
+	flip: false,
+	winter: false,
 
 	/**
-	 * Render primitive in 'element'
-	 * @param {DOMElement} element
+	 * Initialize instance with 'options'
 	 * @param {Object} options
+	 * @returns {Object}
 	 */
-	render: function (element, options) {
-		if (options.type == 'svg') {
-			return this.renderSVG(element, options);
-		} else {
-			return this.renderCanvas(element, options);
+	initialize: function (options) {
+		this.extend(options);
+		return this;
+	},
+
+	/**
+	 * Render primitive
+	 * @param {SVGElement | CanvasContext} element
+	 */
+	render: function (element) {
+		if (this.visible) {
+			if (this.type == 'svg') {
+				return this.renderSVG(element);
+			} else {
+				return this.renderCanvas(element);
+			}
 		}
+	},
+
+	/**
+	 * Transform canvas 'ctx'
+	 * @param {CanvasContext} ctx
+	 */
+	transformCanvas: function (ctx) {
+		ctx.translate(this.x, this.y)
+		ctx.scale(this.scale, this.scale);
 	},
 
 	/**
 	 * Retrieve attribute object for <use>
 	 * @param {String} link
-	 * @param {Object} options
+	 * @returns {Object}
 	 */
-	getUseAttributes: function (link, options) {
+	getUseAttributes: function (link) {
 		return {
 			'xlink:href': link,
 			x: '0',
 			y: '0',
 			width: '100',
 			height: '100',
-			transform: options.flip
+			transform: this.flip
 				? 'translate('
-					+ ((this.WIDTH * options.scale) + options.x)
+					+ ((this.MAX_WIDTH * this.scale) + this.x)
 					+ ','
-					+ options.y
+					+ this.y
 					+ ') scale('
-					+ (-1 * options.scale)
+					+ (-1 * this.scale)
 					+ ', '
-					+ options.scale
+					+ this.scale
 					+ ')'
 				: 'translate('
-					+ options.x
+					+ this.x
 					+ ','
-					+ options.y
+					+ this.y
 					+ ') scale('
-					+ options.scale
+					+ this.scale
 					+ ')'
 		}
 	},
 
-	renderSVG: Trait.required,
-	renderCanvas: Trait.required
+	/**
+	 * Retrieve stringified attribute object for <use>
+	 * @param {String} link
+	 * @returns {String}
+	 */
+	getUseAttributesAsString: function (link) {
+		var props = this.getUseAttributes(link)
+			, str = '<use';
+
+		for (var prop in props) {
+			str += ' ' + prop + '="' + props[prop] + '"';
+		}
+		str += '></use>';
+
+		return str;
+	},
+
+	/**
+	 * Copy properties from 'options'
+	 * @param {Object} options
+	 */
+	extend: function (options) {
+		for (var prop in options) {
+			if (this.hasOwnProperty(prop)) this[prop] = options[prop];
+		}
+	},
 });

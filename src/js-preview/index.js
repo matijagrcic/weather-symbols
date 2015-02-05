@@ -1,21 +1,17 @@
 window.global = window;
 
-var dust = require('dust')
+var svg = require('svg')
 	, data = require('./symbols.json')
 	, template = require('./symbolGroup')
-	, weatherSymbol = require('./weatherSymbol')
+	, weatherSymbol = require('../js/weatherSymbolElement')
 	, classList = require('classlist')
-	, forEach = require('lodash.foreach')
+	, forEach = require('lodash-compat/collection/forEach')
 	, el = document.getElementById('symbols')
 	, slice = Array.prototype.slice;
 
 // Render template
-dust.render('symbolGroup', data, function(err, html) {
-	if (err) {
-		console.log(err);
-	} else {
-		el.innerHTML = html;
-	}
+template.render(data, function (err, html) {
+	el.innerHTML += html;
 });
 
 // Draw canvas symbols

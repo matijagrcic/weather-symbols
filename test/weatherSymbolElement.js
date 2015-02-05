@@ -83,87 +83,6 @@
 	root.require = require;
 })(window != null ? window : global);
 
-require.register('capabilities', function(module, exports, require) {
-  var hasCanvas = false
-  	, hasSVG = false
-  	, backingRatio = 1
-  	, test;
-  
-  // Test for inline svg (Modernizr)
-  test = document.createElement('div');
-  test.innerHTML = '<svg/>';
-  hasSVG = (test.firstChild && test.firstChild.namespaceURI) == 'http://www.w3.org/2000/svg';
-  
-  // Test for canvas
-  test = document.createElement('canvas');
-  hasCanvas = !!(test.getContext && test.getContext('2d'));
-  
-  // Determine backing ratio (account for hi-dpi screens)
-  if (hasCanvas) {
-  	var ctx = test.getContext('2d')
-  		, devicePixelRatio = window.devicePixelRatio || 1
-  		, backingStorePixelRatio = ctx.webkitBackingStorePixelRatio
-  			|| ctx.mozBackingStorePixelRatio
-  			|| ctx.msBackingStorePixelRatio
-  			|| ctx.oBackingStorePixelRatio
-  			|| ctx.backingStorePixelRatio
-  			|| 1;
-  	backingRatio = devicePixelRatio / backingStorePixelRatio;
-  	// Make it available globally
-  	if (!window.backingRatio) window.backingRatio = backingRatio;
-  }
-  
-  exports.hasCanvas = hasCanvas;
-  exports.hasSVG = hasSVG;
-  exports.backingRatio = backingRatio;
-});
-require.register('svg', function(module, exports, require) {
-  var capabilities = require('capabilities');
-  
-  exports.NS = 'http://www.w3.org/2000/svg';
-  exports.LINK = 'http://www.w3.org/1999/xlink';
-  
-  /**
-   * Inject svg symbol definitions into the DOM
-   * @param {String} id
-   * @param {String} defs
-   */
-  exports.injectDefs = function (id, defs) {
-  	if (capabilities.hasSVG && !document.getElementById(id)) {
-  		var el = document.createElement('div')
-  			, svg = '<svg id="'
-  					+ id
-  					+ '" style="display:none;">'
-  					+ defs
-  					+ '</svg>';
-  
-  		el.innerHTML = svg;
-  		document.body.insertBefore(el.firstChild, document.body.firstChild);
-  	}
-  };
-  
-  /**
-   * Append svg element of 'type' to 'parent', setting 'attrs'
-   * @parama {DOMElement} parent
-   * @parama {String} type
-   * @parama {Object} attrs
-   */
-  exports.appendChild = function (parent, type, attrs) {
-  	var el = document.createElementNS(exports.NS, type);
-  
-  	if (attrs) {
-  		for (var attr in attrs) {
-  			if (attr.indexOf('xlink:') == 0) {
-  				el.setAttributeNS(exports.LINK, attr.substring(6), attrs[attr]);
-  			} else {
-  				el.setAttribute(attr, attrs[attr]);
-  			}
-  		}
-  	}
-  
-  	parent.appendChild(el);
-  };
-});
 require.register('lodash-compat/internal/arrayEach', function(module, exports, require) {
   /**
    * A specialized version of `_.forEach` for arrays without support for callback
@@ -2667,6 +2586,87 @@ require.register('trait', function(module, exports, require) {
   
   module.exports = Trait;
 });
+require.register('capabilities', function(module, exports, require) {
+  var hasCanvas = false
+  	, hasSVG = false
+  	, backingRatio = 1
+  	, test;
+  
+  // Test for inline svg (Modernizr)
+  test = document.createElement('div');
+  test.innerHTML = '<svg/>';
+  hasSVG = (test.firstChild && test.firstChild.namespaceURI) == 'http://www.w3.org/2000/svg';
+  
+  // Test for canvas
+  test = document.createElement('canvas');
+  hasCanvas = !!(test.getContext && test.getContext('2d'));
+  
+  // Determine backing ratio (account for hi-dpi screens)
+  if (hasCanvas) {
+  	var ctx = test.getContext('2d')
+  		, devicePixelRatio = window.devicePixelRatio || 1
+  		, backingStorePixelRatio = ctx.webkitBackingStorePixelRatio
+  			|| ctx.mozBackingStorePixelRatio
+  			|| ctx.msBackingStorePixelRatio
+  			|| ctx.oBackingStorePixelRatio
+  			|| ctx.backingStorePixelRatio
+  			|| 1;
+  	backingRatio = devicePixelRatio / backingStorePixelRatio;
+  	// Make it available globally
+  	if (!window.backingRatio) window.backingRatio = backingRatio;
+  }
+  
+  exports.hasCanvas = hasCanvas;
+  exports.hasSVG = hasSVG;
+  exports.backingRatio = backingRatio;
+});
+require.register('svg', function(module, exports, require) {
+  var capabilities = require('capabilities');
+  
+  exports.NS = 'http://www.w3.org/2000/svg';
+  exports.LINK = 'http://www.w3.org/1999/xlink';
+  
+  /**
+   * Inject svg symbol definitions into the DOM
+   * @param {String} id
+   * @param {String} defs
+   */
+  exports.injectDefs = function (id, defs) {
+  	if (capabilities.hasSVG && !document.getElementById(id)) {
+  		var el = document.createElement('div')
+  			, svg = '<svg id="'
+  					+ id
+  					+ '" style="display:none;">'
+  					+ defs
+  					+ '</svg>';
+  
+  		el.innerHTML = svg;
+  		document.body.insertBefore(el.firstChild, document.body.firstChild);
+  	}
+  };
+  
+  /**
+   * Append svg element of 'type' to 'parent', setting 'attrs'
+   * @parama {DOMElement} parent
+   * @parama {String} type
+   * @parama {Object} attrs
+   */
+  exports.appendChild = function (parent, type, attrs) {
+  	var el = document.createElementNS(exports.NS, type);
+  
+  	if (attrs) {
+  		for (var attr in attrs) {
+  			if (attr.indexOf('xlink:') == 0) {
+  				el.setAttributeNS(exports.LINK, attr.substring(6), attrs[attr]);
+  			} else {
+  				el.setAttribute(attr, attrs[attr]);
+  			}
+  		}
+  	}
+  
+  	parent.appendChild(el);
+  };
+});
 require.register('runtime', function(module, exports, require) {
   var isNode = (typeof process !== 'undefined'
   	&& {}.toString.call(process) === '[object process]');
@@ -3629,167 +3629,4 @@ require.register('weatherSymbolElement', function(module, exports, require) {
   	return el;
   }
 });
-require.register('classlist', function(module, exports, require) {
-  var useNative = document.documentElement.classList != null;
-  
-  var RE_TRIM = /^\s+|\s+$/g;
-  
-  /**
-   * Check if 'element' has class 'clas'
-   * @param {Element} element
-   * @param {String} clas
-   * @return {Boolean}
-   */
-  exports.hasClass = function(element, clas) {
-  	if (useNative) {
-  		return element.classList.contains(clas);
-  	} else {
-  		var classes = element.className.replace(RE_TRIM, '').split(' ');
-  		return contains(classes, clas);
-  	}
-  };
-  
-  /**
-   * Check if 'element' has a class matching 'pattern'
-   * @param {Element} element
-   * @param {String} pattern
-   * @return {String}
-   */
-  exports.matchClass = function(element, pattern) {
-  	var classes = element.className.replace(RE_TRIM, '').split(' ')
-  		, clas;
-  	for (var i = 0, n = classes.length; i < n; i++) {
-  		clas = classes[i];
-  		if (clas.indexOf(pattern) !== -1) {
-  			return clas;
-  		}
-  	}
-  	return '';
-  };
-  
-  /**
-   * Add class 'clas' to 'element'
-   * @param {Element} element
-   * @param {String} clas
-   */
-  exports.addClass = function(element, clas) {
-  	if (useNative) {
-  		element.classList.add(clas);
-  	} else {
-  		element.className += ' ' + clas;
-  	}
-  };
-  
-  /**
-   * Remove class 'clas' from 'element'
-   * @param {Element} element
-   * @param {String} clas
-   */
-  exports.removeClass = function(element, clas) {
-  	var c, classes;
-  	if (clas) {
-  		if (useNative) {
-  			element.classList.remove(clas);
-  		} else {
-  			var classes = element.className.replace(RE_TRIM, '').split(' ')
-  				, results = [];
-  			for (var i = 0, n = classes.length; i < n; i++) {
-  				if (classes[i] !== clas) results.push(classes[i]);
-  			}
-  			element.className = results.join(' ');
-  		}
-  	}
-  };
-  
-  /**
-   * Toggle class 'clas' on 'element'
-   * @param {Element} element
-   * @param {String} clas
-   */
-  exports.toggleClass = function(element, clas) {
-  	if (exports.hasClass(element, clas)) {
-  		exports.removeClass(element, clas);
-  	} else {
-  		exports.addClass(element, clas);
-  	}
-  };
-  
-  /**
-   * Replace class 'clasOld' with 'clasNew' on 'element'
-   * @param {Element} element
-   * @param {String} clas
-   */
-  exports.replaceClass = function(element, clasOld, clasNew) {
-  	if (clasOld) {
-  		if (clasNew) {
-  			element.className = element.className.replace(clasOld, clasNew);
-  		} else {
-  			exports.removeClass(element, clasOld);
-  		}
-  	} else if (clasNew) {
-  		exports.addClass(element, clasNew);
-  	}
-  };
-  
-  /**
-   * Add class 'clas' to 'element', and remove after 'duration' milliseconds
-   * @param {Element} element
-   * @param {String} clas
-   * @param {Number} duration
-   */
-  exports.addTemporaryClass = function(element, clas, duration) {
-  	exports.addClass(element, clas);
-  	setTimeout((function() {
-  		exports.removeClass(element, clas);
-  	}), duration);
-  };
-  
-  /**
-   * Determine if 'arr' contains 'item'
-   * @param {Array} arr
-   * @param {Object|String|Number} item
-   * @returns {Boolean}
-   */
-  function contains (arr, item) {
-  	for (var i = 0, n = arr.length; i < n; i++) {
-  		if (arr[i] === item) return true;
-  	}
-  	return false;
-  }
-});
-require.register('../js-preview/index', function(module, exports, require) {
-  window.global = window;
-  
-  var svg = require('svg')
-  	, data = {"symbols":[{"title":"clear","variations":[{"id":"01d"},{"id":"01m"},{"id":"01n"}]},{"title":"fair","variations":[{"id":"02d"},{"id":"02m"},{"id":"02n"}]},{"title":"partly cloudy","variations":[{"id":"03d"},{"id":"03m"},{"id":"03n"}]},{"title":"cloudy","variations":[{"id":"04"}]},{"title":"light rain showers","variations":[{"id":"40d"},{"id":"40m"},{"id":"40n"}]},{"title":"rain showers","variations":[{"id":"05d"},{"id":"05m"},{"id":"05n"}]},{"title":"heavy rain showers","variations":[{"id":"41d"},{"id":"41m"},{"id":"41n"}]},{"title":"light sleet showers","variations":[{"id":"42d"},{"id":"42m"},{"id":"42n"}]},{"title":"sleet showers","variations":[{"id":"07d"},{"id":"07m"},{"id":"07n"}]},{"title":"heavy sleet showers","variations":[{"id":"43d"},{"id":"43m"},{"id":"43n"}]},{"title":"light snow showers","variations":[{"id":"44d"},{"id":"44m"},{"id":"44n"}]},{"title":"snow showers","variations":[{"id":"08d"},{"id":"08m"},{"id":"08n"}]},{"title":"heavy snow showers","variations":[{"id":"45d"},{"id":"45m"},{"id":"45n"}]},{"title":"light rain","variations":[{"id":"46"}]},{"title":"rain","variations":[{"id":"09"}]},{"title":"heavy rain","variations":[{"id":"10"}]},{"title":"light sleet","variations":[{"id":"47"}]},{"title":"sleet","variations":[{"id":"12"}]},{"title":"heavy sleet","variations":[{"id":"48"}]},{"title":"light snow","variations":[{"id":"49"}]},{"title":"snow","variations":[{"id":"13"}]},{"title":"heavy snow","variations":[{"id":"50"}]},{"title":"fog","variations":[{"id":"15"}]},{"title":"light rain showers with thunder","variations":[{"id":"24d"},{"id":"24m"},{"id":"24n"}]},{"title":"rain showers with thunder","variations":[{"id":"06d"},{"id":"06m"},{"id":"06n"}]},{"title":"heavy rain showers with thunder","variations":[{"id":"25d"},{"id":"25m"},{"id":"25n"}]},{"title":"light sleet showers with thunder","variations":[{"id":"26d"},{"id":"26m"},{"id":"26n"}]},{"title":"sleet showers with thunder","variations":[{"id":"20d"},{"id":"20m"},{"id":"20n"}]},{"title":"heavy sleet showers with thunder","variations":[{"id":"27d"},{"id":"27m"},{"id":"27n"}]},{"title":"light snow showers with thunder","variations":[{"id":"28d"},{"id":"28m"},{"id":"28n"}]},{"title":"snow showers with thunder","variations":[{"id":"21d"},{"id":"21m"},{"id":"21n"}]},{"title":"heavy snow showers with thunder","variations":[{"id":"29d"},{"id":"29m"},{"id":"29n"}]},{"title":"light rain with thunder","variations":[{"id":"30"}]},{"title":"rain with thunder","variations":[{"id":"22"}]},{"title":"heavy rain with thunder","variations":[{"id":"11"}]},{"title":"light sleet with thunder","variations":[{"id":"31"}]},{"title":"sleet with thunder","variations":[{"id":"23"}]},{"title":"heavy sleet with thunder","variations":[{"id":"32"}]},{"title":"light snow with thunder","variations":[{"id":"33"}]},{"title":"snow with thunder","variations":[{"id":"14"}]},{"title":"heavy snow with thunder","variations":[{"id":"34"}]}]}
-  	, template = require('./symbolGroup')
-  	, weatherSymbol = require('weatherSymbolElement')
-  	, classList = require('classlist')
-  	, forEach = require('lodash-compat/collection/forEach')
-  	, el = document.getElementById('symbols')
-  	, slice = Array.prototype.slice;
-  
-  // Render template
-  template.render(data, function (err, html) {
-  	el.innerHTML += html;
-  });
-  
-  // Draw canvas symbols
-  forEach(document.querySelectorAll('figure'), function (el) {
-  	var symbol = el.querySelector('.symbol')
-  		, options = {
-  			imagePath: 'dist/png/'
-  		};
-  
-  	if (classList.hasClass(el, 'svg')) {
-  		options.type = 'svg';
-  	} else if (classList.hasClass(el, 'canvas')) {
-  		options.type = 'canvas';
-  	} else if (classList.hasClass(el, 'img')) {
-  		options.type = 'img';
-  	}
-  
-  	weatherSymbol(symbol, options);
-  });
-});
-require('../js-preview/index');
+require('weatherSymbolElement');
