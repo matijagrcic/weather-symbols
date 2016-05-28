@@ -1,14 +1,16 @@
-'use strict'
+'use strict';
 
 /**
- * Weather symbol component.
+ * Yr weather symbols
+ * https://github.com/yr/weather-symbols
+ * @copyright Yr
+ * @license MIT
  */
 
-;
-var graphicsComponent = require('@yr/graphics-component'),
-    primitives = require('./lib/primitives'),
-    recipes = require('./lib/recipes'),
-    utils = require('./lib/utils');
+var graphicsComponent = require('@yr/graphics-component');
+var primitives = require('./lib/primitives');
+var recipes = require('./lib/recipes');
+var utils = require('./lib/utils');
 
 module.exports = {
   /**
@@ -17,8 +19,9 @@ module.exports = {
    * @returns {Function}
    */
 
-  create: function create(options) {
-    options = options || {};
+  create: function create() {
+    var options = arguments.length <= 0 || arguments[0] === undefined ? {} : arguments[0];
+
     options.renderInnerSvg = renderInnerSvg;
 
     return graphicsComponent.create(options);
@@ -33,11 +36,11 @@ module.exports = {
 function renderInnerSvg(id) {
   var recipe = recipes[id];
 
-  if (!recipe) return '';
+  if (!recipe) return null;
 
-  return recipe.reduce(function (html, r) {
-    var opts = utils.parse(r);
+  return recipe.map(function (item) {
+    var options = utils.parse(item);
 
-    return html += primitives[opts.primitive](opts);
-  }, '');
+    return primitives[options.primitive](options);
+  });
 }

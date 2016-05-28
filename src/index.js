@@ -1,13 +1,16 @@
 'use strict';
 
 /**
- * Weather symbol component.
+ * Yr weather symbols
+ * https://github.com/yr/weather-symbols
+ * @copyright Yr
+ * @license MIT
  */
 
-const graphicsComponent = require('@yr/graphics-component')
-  , primitives = require('./lib/primitives')
-  , recipes = require('./lib/recipes')
-  , utils = require('./lib/utils');
+const graphicsComponent = require('@yr/graphics-component');
+const primitives = require('./lib/primitives');
+const recipes = require('./lib/recipes');
+const utils = require('./lib/utils');
 
 module.exports = {
   /**
@@ -15,8 +18,7 @@ module.exports = {
    * @param {Object} options
    * @returns {Function}
    */
-  create (options) {
-    options = options || {};
+  create (options = {}) {
     options.renderInnerSvg = renderInnerSvg;
 
     return graphicsComponent.create(options);
@@ -31,11 +33,11 @@ module.exports = {
 function renderInnerSvg (id) {
   const recipe = recipes[id];
 
-  if (!recipe) return '';
+  if (!recipe) return null;
 
-  return recipe.reduce((html, r) => {
-    const opts = utils.parse(r);
+  return recipe.map((item) => {
+    const options = utils.parse(item);
 
-    return html += primitives[opts.primitive](opts);
-  }, '');
+    return primitives[options.primitive](options);
+  });
 }
